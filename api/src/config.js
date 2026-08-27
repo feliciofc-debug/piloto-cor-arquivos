@@ -35,6 +35,12 @@ const config = {
   sessionTtlSeconds: Number(env('SESSION_TTL_SECONDS', String(twelveHoursInSeconds))),
   loginRateLimitMax: Number(env('LOGIN_RATE_LIMIT_MAX', '5')),
   loginRateLimitWindow: env('LOGIN_RATE_LIMIT_WINDOW', '1 minute'),
+  workerToken: env('WORKER_TOKEN'),
+  storageDir: env('STORAGE_DIR', path.resolve(__dirname, '../../storage')),
+  uploadMaxBytes: Number(env('UPLOAD_MAX_BYTES', String(100 * 1024 * 1024))),
+  frameJobTimeoutMinutes: Number(env('FRAME_JOB_TIMEOUT_MINUTES', '5')),
+  frameJobMaxAttempts: Number(env('FRAME_JOB_MAX_ATTEMPTS', '3')),
+  frameMaintenanceIntervalMs: Number(env('FRAME_MAINTENANCE_INTERVAL_MS', '60000')),
 };
 
 function assertServerConfig() {
@@ -46,6 +52,14 @@ function assertServerConfig() {
 
   if (!Number.isInteger(config.port) || config.port <= 0) {
     throw new Error('PORT precisa ser um numero inteiro positivo.');
+  }
+
+  if (!config.workerToken) {
+    throw new Error('Configure WORKER_TOKEN para autenticar o worker.');
+  }
+
+  if (!Number.isFinite(config.uploadMaxBytes) || config.uploadMaxBytes <= 0) {
+    throw new Error('UPLOAD_MAX_BYTES precisa ser um numero positivo.');
   }
 }
 
