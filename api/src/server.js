@@ -1,9 +1,13 @@
 const Fastify = require('fastify');
+const multipart = require('@fastify/multipart');
 const { assertServerConfig, config } = require('./config');
 const { closePool } = require('./db');
 const authPlugin = require('./plugins/auth');
 const authRoutes = require('./routes/auth');
 const healthRoutes = require('./routes/health');
+const ocorrenciasRoutes = require('./routes/ocorrencias');
+const workerRoutes = require('./routes/worker');
+const { startFrameMaintenance } = require('./services/frame-maintenance');
 
 async function buildServer() {
   assertServerConfig();
@@ -21,17 +25,27 @@ async function buildServer() {
   });
 
   await fastify.register(authPlugin);
+  await fastify.register(multipart, {
+    limits: {
+      files: 1,
+      fileSize: config.uploadMaxBytes,
+    },
+  });
   await fastify.register(healthRoutes);
   await fastify.register(authRoutes);
+  await fastify.register(ocorrenciasRoutes);
+  await fastify.register(workerRoutes);
 
   return fastify;
 }
 
 async function start() {
   const fastify = await buildServer();
+  const stopMaintenance = startFrameMaintenance(fastify);
 
   const shutdown = async () => {
     fastify.log.info('encerrando api');
+    clearInterval(stopMaintenance);
     await fastify.close();
     await closePool();
   };
