@@ -1,6 +1,6 @@
 `api/src/services/protocolos.js`
 
-```js
+
 const { pool } = require('../db');
 
 function normalizarAcionamentos(acionamentos) {
@@ -49,4 +49,4 @@ async function casarProtocolos(fatos, client = pool) {
 module.exports = {
   casarProtocolos,
 };
-```
+
