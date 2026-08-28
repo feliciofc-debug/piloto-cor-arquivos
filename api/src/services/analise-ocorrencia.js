@@ -1,6 +1,6 @@
 `api/src/services/analise-ocorrencia.js`
 
-```js
+
 const { pool } = require('../db');
 const { config } = require('../config');
 const { analisarFrames } = require('./visao');
@@ -203,4 +203,4 @@ module.exports = {
   analisarOcorrencia,
   atualizarFalhaAnalise,
 };
-```
+
