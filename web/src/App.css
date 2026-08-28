@@ -185,7 +185,7 @@ textarea {
 }
 
 .button-danger {
-  background: #7f1d1d;
+  background: #641b18;
   color: #ffffff;
 }
 
@@ -359,6 +359,24 @@ dd {
   padding: 14px;
 }
 
+.frame-navigation {
+  align-items: center;
+  background: #f6f9fc;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 140px 1fr 140px;
+  padding: 16px;
+  text-align: center;
+}
+
+.frame-navigation strong {
+  color: var(--text-strong);
+  font-size: 1.1rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .frame-thumb {
   background: transparent;
   border: 3px solid transparent;
@@ -367,6 +385,7 @@ dd {
   flex: 0 0 120px;
   overflow: hidden;
   padding: 0;
+  position: relative;
 }
 
 .frame-thumb.active {
@@ -378,6 +397,19 @@ dd {
   display: block;
   object-fit: cover;
   width: 100%;
+}
+
+.frame-thumb span {
+  background: rgba(16, 34, 56, 0.86);
+  border-radius: 999px;
+  bottom: 6px;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  min-width: 28px;
+  padding: 3px 8px;
+  position: absolute;
+  right: 6px;
 }
 
 .protocol-stack,
@@ -467,6 +499,7 @@ dd {
 
   .filters,
   .card-link,
+  .frame-navigation,
   .detail-layout {
     grid-template-columns: 1fr;
   }

@@ -21,18 +21,18 @@ const statusOptions = [
 const fatoLabels = {
   carro: 'Carros',
   moto: 'Motos',
-  caminhao: 'Caminhoes',
-  onibus: 'Onibus',
+  caminhao: 'Caminhões',
+  onibus: 'Ônibus',
   pessoa_na_pista: 'Pessoa na pista',
   pessoa_ao_solo: 'Pessoa ao solo',
   fogo: 'Fogo',
-  fumaca: 'Fumaca',
+  fumaca: 'Fumaça',
   carga_derramada: 'Carga derramada',
-  agua_na_pista: 'Agua na pista',
-  veiculo_parado: 'Veiculo parado',
+  agua_na_pista: 'Água na pista',
+  veiculo_parado: 'Veículo parado',
   bloqueio_via: 'Bloqueio da via',
-  confianca: 'Confianca',
-  observacao: 'Observacao',
+  confianca: 'Confiança',
+  observacao: 'Observação',
 };
 
 function navegar(path) {
@@ -58,7 +58,7 @@ async function api(path, options = {}) {
       payload = {};
     }
 
-    const error = new Error(payload.error || 'Falha na comunicacao com a API.');
+    const error = new Error(payload.error || 'Falha na comunicação com a API.');
     error.status = response.status;
     throw error;
   }
@@ -68,7 +68,7 @@ async function api(path, options = {}) {
 
 function formatarData(value) {
   if (!value) {
-    return 'Sem horario';
+    return 'Sem horário';
   }
 
   return new Intl.DateTimeFormat('pt-BR', {
@@ -84,11 +84,11 @@ function formatarStatus(value) {
 
 function formatarValor(value) {
   if (typeof value === 'boolean') {
-    return value ? 'Sim' : 'Nao';
+    return value ? 'Sim' : 'Não';
   }
 
   if (value === null || value === undefined || value === '') {
-    return 'Nao informado';
+    return 'Não informado';
   }
 
   return String(value);
@@ -116,14 +116,45 @@ function listaFatos(fatos) {
   return [...veiculos, ...demais];
 }
 
+function extrairFrame(item) {
+  if (typeof item === 'string') {
+    return item;
+  }
+
+  if (item && typeof item === 'object') {
+    return item.path || item.caminho || item.frame || item.url || null;
+  }
+
+  return null;
+}
+
+function normalizarFrames(frames, framePrincipal) {
+  let lista = frames;
+
+  if (typeof frames === 'string') {
+    try {
+      lista = JSON.parse(frames);
+    } catch {
+      lista = [];
+    }
+  }
+
+  const ordenados = [
+    framePrincipal,
+    ...(Array.isArray(lista) ? lista.map(extrairFrame) : []),
+  ].filter(Boolean);
+
+  return Array.from(new Set(ordenados));
+}
+
 function BrandHeader({ compact = false }) {
   return (
     <div className={compact ? 'brand brand-compact' : 'brand'}>
-      <img src="/brasao.svg" alt="Brasao temporario do piloto" />
+      <img src="/brasao.svg" alt="Brasão temporário do piloto" />
       <span className="brand-divider" />
       <div>
-        <strong>Centro de Operacoes</strong>
-        <strong>e Resiliencia</strong>
+        <strong>Centro de Operações</strong>
+        <strong>e Resiliência</strong>
       </div>
     </div>
   );
@@ -263,7 +294,7 @@ function LoginPage() {
             {enviando ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
-        <footer>Piloto COR - monitoramento assistido de tuneis</footer>
+        <footer>Piloto COR - monitoramento assistido de túneis</footer>
       </section>
     </main>
   );
@@ -283,7 +314,7 @@ function OcorrenciaCard({ ocorrencia }) {
       >
         <div className="thumb">
           {ocorrencia.frame_principal ? (
-            <img src={`/midia/${ocorrencia.frame_principal}`} alt="Frame principal da ocorrencia" />
+            <img src={`/midia/${ocorrencia.frame_principal}`} alt="Frame principal da ocorrência" />
           ) : (
             <span>Sem imagem</span>
           )}
@@ -297,11 +328,11 @@ function OcorrenciaCard({ ocorrencia }) {
           </div>
           <dl className="meta-grid">
             <div>
-              <dt>Horario</dt>
+              <dt>Horário</dt>
               <dd>{formatarData(ocorrencia.horario)}</dd>
             </div>
             <div>
-              <dt>Confianca</dt>
+              <dt>Confiança</dt>
               <dd>{formatarValor(ocorrencia.confianca)}</dd>
             </div>
           </dl>
@@ -311,7 +342,7 @@ function OcorrenciaCard({ ocorrencia }) {
                 {protocolo.codigo} - {protocolo.nome}
               </span>
             )) : (
-              <span>Nenhum protocolo aplicavel segundo a regra</span>
+              <span>Nenhum protocolo aplicável segundo a regra</span>
             )}
           </div>
         </div>
@@ -358,7 +389,7 @@ function OcorrenciasPage() {
     <AppShell>
       <section className="page-heading">
         <p className="eyebrow">Fila do operador</p>
-        <h1>Ocorrencias</h1>
+        <h1>Ocorrências</h1>
       </section>
 
       <section className="filters card">
@@ -371,12 +402,12 @@ function OcorrenciasPage() {
           </select>
         </label>
         <label>
-          Tunel
+          Túnel
           <input
             type="text"
             value={tunel}
             onChange={(event) => setTunel(event.target.value)}
-            placeholder="Nome exato do tunel"
+            placeholder="Nome exato do túnel"
           />
         </label>
         <button type="button" className="button button-secondary" onClick={carregar}>
@@ -385,11 +416,11 @@ function OcorrenciasPage() {
       </section>
 
       {erro ? <p className="alert alert-error">{erro}</p> : null}
-      {carregando ? <p className="loading">Carregando ocorrencias...</p> : null}
+      {carregando ? <p className="loading">Carregando ocorrências...</p> : null}
 
       <section className="occurrence-grid">
         {!carregando && ocorrencias.length === 0 ? (
-          <div className="empty-state card">Nenhuma ocorrencia encontrada.</div>
+          <div className="empty-state card">Nenhuma ocorrência encontrada.</div>
         ) : null}
         {ocorrencias.map((ocorrencia) => (
           <OcorrenciaCard key={ocorrencia.id} ocorrencia={ocorrencia} />
@@ -403,7 +434,7 @@ function ProtocolosCasados({ protocolos }) {
   const lista = Array.isArray(protocolos) ? protocolos : [];
 
   if (lista.length === 0) {
-    return <p className="muted">Nenhum protocolo aplicavel segundo a regra.</p>;
+    return <p className="muted">Nenhum protocolo aplicável segundo a regra.</p>;
   }
 
   return (
@@ -416,10 +447,10 @@ function ProtocolosCasados({ protocolos }) {
               <h3>{protocolo.codigo} - {protocolo.nome}</h3>
               <span>Prioridade {protocolo.prioridade}</span>
             </div>
-            <p>Protocolo aplicavel segundo a regra.</p>
+            <p>Protocolo aplicável segundo a regra.</p>
             {protocolo.acionamentos_suprimidos ? (
               <p className="alert alert-warning">
-                Leitura com confianca baixa. Nenhum acionamento e sugerido.
+                Leitura com confiança baixa. Nenhum acionamento é sugerido.
               </p>
             ) : (
               <ul className="action-list">
@@ -455,7 +486,7 @@ function DecisionPanel({ detalhe, onDecidido }) {
         method: 'POST',
         body: JSON.stringify({ decisao, ...body }),
       });
-      setMensagem('Decisao registrada.');
+      setMensagem('Decisão registrada.');
       await onDecidido();
     } catch (error) {
       setErro(error.message);
@@ -466,17 +497,17 @@ function DecisionPanel({ detalhe, onDecidido }) {
 
   return (
     <section className="card decision-card">
-      <p className="eyebrow">Decisao humana</p>
-      <h2>Acoes do operador</h2>
+      <p className="eyebrow">Decisão humana</p>
+      <h2>Ações do operador</h2>
       {!aguardando ? (
-        <p className="muted">Esta ocorrencia nao esta aguardando decisao.</p>
+        <p className="muted">Esta ocorrência não está aguardando decisão.</p>
       ) : null}
       {erro ? <p className="alert alert-error">{erro}</p> : null}
       {mensagem ? <p className="alert alert-success">{mensagem}</p> : null}
       <div className="decision-grid">
         <div>
           <h3>Aprovar</h3>
-          <p>Confirma o protocolo aplicavel segundo a regra.</p>
+          <p>Confirma o protocolo aplicável segundo a regra.</p>
           <button
             type="button"
             className="button button-primary"
@@ -488,7 +519,7 @@ function DecisionPanel({ detalhe, onDecidido }) {
         </div>
         <div>
           <h3>Ajustar</h3>
-          <p>Escolha um protocolo ativo quando a regra precisar de correcao.</p>
+          <p>Escolha um protocolo ativo quando a regra precisar de correção.</p>
           <select
             value={protocoloId}
             onChange={(event) => setProtocoloId(event.target.value)}
@@ -512,7 +543,7 @@ function DecisionPanel({ detalhe, onDecidido }) {
         </div>
         <div>
           <h3>Descartar</h3>
-          <p>Informe o motivo para descartar a ocorrencia.</p>
+          <p>Informe o motivo para descartar a ocorrência.</p>
           <textarea
             value={motivo}
             onChange={(event) => setMotivo(event.target.value)}
@@ -543,8 +574,8 @@ function OcorrenciaDetalhePage({ id }) {
     try {
       const data = await api(`/ocorrencias/${id}`);
       setDetalhe(data);
-      const frames = Array.isArray(data.ocorrencia.frames) ? data.ocorrencia.frames : [];
-      setFrameAtual(data.ocorrencia.frame_principal || frames[0] || '');
+      const frames = normalizarFrames(data.ocorrencia.frames, data.ocorrencia.frame_principal);
+      setFrameAtual((atual) => (atual && frames.includes(atual) ? atual : frames[0] || ''));
       setErro('');
     } catch (error) {
       setErro(error.message);
@@ -558,10 +589,56 @@ function OcorrenciaDetalhePage({ id }) {
     carregar();
   }, [carregar]);
 
+  const sequenciaFrames = useMemo(() => (
+    normalizarFrames(detalhe?.ocorrencia?.frames, detalhe?.ocorrencia?.frame_principal)
+  ), [detalhe]);
+
+  const frameIndex = sequenciaFrames.indexOf(frameAtual);
+  const framePosicao = frameIndex >= 0 ? frameIndex : 0;
+  const totalFrames = sequenciaFrames.length;
+
+  const irParaFrame = useCallback((direcao) => {
+    setFrameAtual((atual) => {
+      if (sequenciaFrames.length === 0) {
+        return '';
+      }
+
+      const indiceAtual = Math.max(0, sequenciaFrames.indexOf(atual));
+      const proximoIndice = Math.min(
+        sequenciaFrames.length - 1,
+        Math.max(0, indiceAtual + direcao),
+      );
+
+      return sequenciaFrames[proximoIndice];
+    });
+  }, [sequenciaFrames]);
+
+  useEffect(() => {
+    function onKeyDown(event) {
+      const tagName = event.target?.tagName;
+      if (tagName === 'INPUT' || tagName === 'SELECT' || tagName === 'TEXTAREA') {
+        return;
+      }
+
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        irParaFrame(-1);
+      }
+
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        irParaFrame(1);
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [irParaFrame]);
+
   if (carregando) {
     return (
       <AppShell>
-        <p className="loading">Carregando ocorrencia...</p>
+        <p className="loading">Carregando ocorrência...</p>
       </AppShell>
     );
   }
@@ -572,13 +649,12 @@ function OcorrenciaDetalhePage({ id }) {
         <button type="button" className="button button-ghost" onClick={() => navegar('/ocorrencias')}>
           Voltar
         </button>
-        <p className="alert alert-error">{erro || 'Ocorrencia nao encontrada.'}</p>
+        <p className="alert alert-error">{erro || 'Ocorrência não encontrada.'}</p>
       </AppShell>
     );
   }
 
   const { ocorrencia } = detalhe;
-  const frames = Array.isArray(ocorrencia.frames) ? ocorrencia.frames : [];
   const fatos = listaFatos(ocorrencia.fatos);
 
   return (
@@ -588,7 +664,7 @@ function OcorrenciaDetalhePage({ id }) {
       </button>
 
       <section className="page-heading">
-        <p className="eyebrow">Ocorrencia</p>
+        <p className="eyebrow">Ocorrência</p>
         <h1>{ocorrencia.camera?.tunel || 'Upload'}</h1>
         <p>{formatarData(ocorrencia.detectada_em || ocorrencia.created_at)}</p>
       </section>
@@ -597,20 +673,43 @@ function OcorrenciaDetalhePage({ id }) {
         <div className="detail-main">
           <article className="card frame-card">
             {frameAtual ? (
-              <img src={`/midia/${frameAtual}`} alt="Frame selecionado da ocorrencia" />
+              <img src={`/midia/${frameAtual}`} alt="Frame selecionado da ocorrência" />
             ) : (
-              <div className="empty-frame">Sem frame disponivel</div>
+              <div className="empty-frame">Sem frame disponível</div>
             )}
-            {frames.length > 1 ? (
+            <div className="frame-navigation">
+              <button
+                type="button"
+                className="button button-secondary"
+                disabled={totalFrames <= 1 || framePosicao === 0}
+                onClick={() => irParaFrame(-1)}
+              >
+                Anterior
+              </button>
+              <strong>
+                {totalFrames > 0 ? `Frame ${framePosicao + 1} de ${totalFrames}` : 'Sem frames'}
+              </strong>
+              <button
+                type="button"
+                className="button button-secondary"
+                disabled={totalFrames <= 1 || framePosicao >= totalFrames - 1}
+                onClick={() => irParaFrame(1)}
+              >
+                Próximo
+              </button>
+            </div>
+            {totalFrames > 0 ? (
               <div className="frame-strip">
-                {frames.map((frame) => (
+                {sequenciaFrames.map((frame, index) => (
                   <button
                     type="button"
                     key={frame}
                     className={frame === frameAtual ? 'frame-thumb active' : 'frame-thumb'}
                     onClick={() => setFrameAtual(frame)}
+                    aria-label={`Selecionar frame ${index + 1} de ${totalFrames}`}
                   >
-                    <img src={`/midia/${frame}`} alt="Miniatura de frame da ocorrencia" />
+                    <img src={`/midia/${frame}`} alt={`Miniatura do frame ${index + 1}`} />
+                    <span>{index + 1}</span>
                   </button>
                 ))}
               </div>
@@ -618,7 +717,7 @@ function OcorrenciaDetalhePage({ id }) {
           </article>
 
           <article className="card">
-            <p className="eyebrow">Identificado pela analise</p>
+            <p className="eyebrow">Identificado pela análise</p>
             <h2>Fatos observados</h2>
             <dl className="facts-grid">
               {fatos.map((fato) => (
@@ -632,7 +731,7 @@ function OcorrenciaDetalhePage({ id }) {
 
           <article className="card">
             <p className="eyebrow">Regra operacional</p>
-            <h2>Protocolos aplicaveis</h2>
+            <h2>Protocolos aplicáveis</h2>
             <ProtocolosCasados protocolos={ocorrencia.protocolos_casados} />
           </article>
         </div>
@@ -679,7 +778,7 @@ function Router() {
   }, [carregando, usuario, path]);
 
   if (carregando) {
-    return <div className="loading full-page">Verificando sessao...</div>;
+    return <div className="loading full-page">Verificando sessão...</div>;
   }
 
   if (!usuario) {
