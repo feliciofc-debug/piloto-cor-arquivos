@@ -1,3 +1,6 @@
+`db/verificacao.sql`
+
+```sql
 -- Verificacao do schema inicial do Piloto COR.
 -- Rode depois de aplicar as migracoes em db/migrations/.
 --
@@ -463,9 +466,118 @@ begin
 end;
 $$;
 
+do $$
+declare
+  tun01_ok boolean;
+  tun03_ok boolean;
+  tun05_ok boolean;
+  vazio_ok boolean;
+  nenhum_bloqueia_ok boolean;
+  aninhado_ok boolean;
+begin
+  perform pg_temp.registrar_verificacao(
+    'funcao protocol_criteria_matches existe',
+    exists (
+      select 1
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public'
+        and p.proname = 'protocol_criteria_matches'
+    ),
+    'funcao encontrada',
+    'funcao ausente'
+  );
+
+  select protocol_criteria_matches(
+    '{"pessoa_ao_solo":true}'::jsonb,
+    p.criterios
+  )
+  into tun01_ok
+  from protocolos p
+  where p.codigo = 'TUN-01';
+
+  perform pg_temp.registrar_verificacao(
+    'TUN-01 casa com pessoa_ao_solo = true',
+    coalesce(tun01_ok, false),
+    'casamento confirmado',
+    'TUN-01 nao casou como esperado'
+  );
+
+  select protocol_criteria_matches(
+    '{"veiculo_parado":true}'::jsonb,
+    p.criterios
+  )
+  into tun03_ok
+  from protocolos p
+  where p.codigo = 'TUN-03';
+
+  perform pg_temp.registrar_verificacao(
+    'TUN-03 casa com veiculo_parado = true',
+    coalesce(tun03_ok, false),
+    'casamento confirmado',
+    'TUN-03 nao casou como esperado'
+  );
+
+  select protocol_criteria_matches(
+    '{"agua_na_pista":true}'::jsonb,
+    p.criterios
+  )
+  into tun05_ok
+  from protocolos p
+  where p.codigo = 'TUN-05';
+
+  perform pg_temp.registrar_verificacao(
+    'TUN-05 casa com agua_na_pista = true',
+    coalesce(tun05_ok, false),
+    'casamento confirmado',
+    'TUN-05 nao casou como esperado'
+  );
+
+  select not protocol_criteria_matches(
+    '{}'::jsonb,
+    '{"todos":[],"algum":[],"nenhum":[]}'::jsonb
+  )
+  into vazio_ok;
+
+  perform pg_temp.registrar_verificacao(
+    'criterio vazio nao casa com tudo',
+    coalesce(vazio_ok, false),
+    'protocolo sem condicao nao casa',
+    'protocolo sem condicao casou indevidamente'
+  );
+
+  select not protocol_criteria_matches(
+    '{"fogo":true}'::jsonb,
+    '{"todos":[],"algum":[],"nenhum":[{"campo":"fogo","igual":true}]}'::jsonb
+  )
+  into nenhum_bloqueia_ok;
+
+  perform pg_temp.registrar_verificacao(
+    'nenhum bloqueia quando condicao proibida aparece',
+    coalesce(nenhum_bloqueia_ok, false),
+    'condicao proibida bloqueou o casamento',
+    'condicao proibida nao bloqueou o casamento'
+  );
+
+  select protocol_condition_matches(
+    '{"veiculos":{"moto":1}}'::jsonb,
+    '{"campo":"veiculos.moto","maior_que":0}'::jsonb
+  )
+  into aninhado_ok;
+
+  perform pg_temp.registrar_verificacao(
+    'campo aninhado veiculos.moto funciona',
+    coalesce(aninhado_ok, false),
+    'campo aninhado avaliado corretamente',
+    'campo aninhado nao foi avaliado corretamente'
+  );
+end;
+$$;
+
 select
   status,
   verificacao,
   detalhe
 from verificacao_resultados
 order by id;
+```
