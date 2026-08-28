@@ -32,10 +32,10 @@ async function buildServer() {
       fileSize: config.uploadMaxBytes,
     },
   });
-  await fastify.register(healthRoutes);
-  await fastify.register(authRoutes);
-  await fastify.register(ocorrenciasRoutes);
-  await fastify.register(protocolosRoutes);
+  await fastify.register(healthRoutes, { prefix: '/api' });
+  await fastify.register(authRoutes, { prefix: '/api' });
+  await fastify.register(ocorrenciasRoutes, { prefix: '/api' });
+  await fastify.register(protocolosRoutes, { prefix: '/api' });
   await fastify.register(workerRoutes);
 
   return fastify;

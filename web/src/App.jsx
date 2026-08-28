@@ -265,7 +265,7 @@ function SessionProvider({ children }) {
 
   const carregarSessao = useCallback(async () => {
     try {
-      const data = await api('/auth/eu');
+      const data = await api('/api/auth/eu');
       setUsuario(data.usuario);
     } catch (error) {
       if (error.status !== 401) {
@@ -283,7 +283,7 @@ function SessionProvider({ children }) {
   }, [carregarSessao]);
 
   const login = useCallback(async (email, senha) => {
-    const data = await api('/auth/login', {
+    const data = await api('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, senha }),
     });
@@ -292,7 +292,7 @@ function SessionProvider({ children }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await api('/auth/logout', { method: 'POST' }).catch(() => {});
+    await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
     setUsuario(null);
     navegar('/login');
   }, []);
@@ -421,7 +421,7 @@ function OcorrenciaCard({ ocorrencia }) {
       >
         <div className="thumb">
           {ocorrencia.frame_principal ? (
-            <img src={`/midia/${ocorrencia.frame_principal}`} alt="Frame principal da ocorrência" />
+            <img src={`/api/midia/${ocorrencia.frame_principal}`} alt="Frame principal da ocorrência" />
           ) : (
             <span>Sem imagem</span>
           )}
@@ -479,7 +479,7 @@ function OcorrenciasPage() {
     }
 
     try {
-      const data = await api(`/ocorrencias${params.toString() ? `?${params}` : ''}`);
+      const data = await api(`/api/ocorrencias${params.toString() ? `?${params}` : ''}`);
       setOcorrencias(data.ocorrencias || []);
       setErro('');
     } catch (error) {
@@ -509,7 +509,7 @@ function OcorrenciasPage() {
     setEnviandoVideo(true);
 
     try {
-      const data = await uploadArquivo('/ocorrencias/upload', file, setUploadProgresso);
+      const data = await uploadArquivo('/api/ocorrencias/upload', file, setUploadProgresso);
       navegar(`/ocorrencias/${data.ocorrencia_id}`);
     } catch (error) {
       setUploadErro(error.message);
@@ -646,7 +646,7 @@ function DecisionPanel({ detalhe, onDecidido }) {
     setEnviando(decisao);
 
     try {
-      await api(`/ocorrencias/${detalhe.ocorrencia.id}/decidir`, {
+      await api(`/api/ocorrencias/${detalhe.ocorrencia.id}/decidir`, {
         method: 'POST',
         body: JSON.stringify({ decisao, ...body }),
       });
@@ -736,7 +736,7 @@ function OcorrenciaDetalhePage({ id }) {
 
   const carregar = useCallback(async () => {
     try {
-      const data = await api(`/ocorrencias/${id}`);
+      const data = await api(`/api/ocorrencias/${id}`);
       setDetalhe(data);
       const frames = normalizarFrames(data.ocorrencia.frames, data.ocorrencia.frame_principal);
       setFrameAtual((atual) => (atual && frames.includes(atual) ? atual : frames[0] || ''));
@@ -846,7 +846,7 @@ function OcorrenciaDetalhePage({ id }) {
         <div className="detail-main">
           <article className="card frame-card">
             {frameAtual ? (
-              <img src={`/midia/${frameAtual}`} alt="Frame selecionado da ocorrência" />
+              <img src={`/api/midia/${frameAtual}`} alt="Frame selecionado da ocorrência" />
             ) : (
               <div className="empty-frame">Sem frame disponível</div>
             )}
@@ -881,7 +881,7 @@ function OcorrenciaDetalhePage({ id }) {
                     onClick={() => setFrameAtual(frame)}
                     aria-label={`Selecionar frame ${index + 1} de ${totalFrames}`}
                   >
-                    <img src={`/midia/${frame}`} alt={`Miniatura do frame ${index + 1}`} />
+                    <img src={`/api/midia/${frame}`} alt={`Miniatura do frame ${index + 1}`} />
                     <span>{index + 1}</span>
                   </button>
                 ))}
@@ -975,7 +975,7 @@ function ProtocolosPage() {
 
   const carregar = useCallback(async () => {
     try {
-      const data = await api('/protocolos');
+      const data = await api('/api/protocolos');
       setProtocolos(data.protocolos || []);
       setErro('');
     } catch (error) {
@@ -1004,7 +1004,7 @@ function ProtocolosPage() {
     setImportando(true);
 
     try {
-      const data = await uploadArquivo('/protocolos/importar', file, setImportProgress);
+      const data = await uploadArquivo('/api/protocolos/importar', file, setImportProgress);
       setResultadoImportacao(data);
       await carregar();
     } catch (error) {
@@ -1016,7 +1016,7 @@ function ProtocolosPage() {
 
   async function alterarAtivo(protocolo) {
     try {
-      await api(`/protocolos/${protocolo.id}/ativo`, {
+      await api(`/api/protocolos/${protocolo.id}/ativo`, {
         method: 'PATCH',
         body: JSON.stringify({ ativo: !protocolo.ativo }),
       });

@@ -43,6 +43,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:8091/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     deploy:
       resources:
         limits:
@@ -74,5 +80,42 @@ services:
           cpus: "1.00"
           memory: 1g
 
+
+  nginx:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    container_name: cor-nginx
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DOMAIN: ${DOMAIN}
+      NGINX_CLIENT_MAX_BODY_SIZE: ${NGINX_CLIENT_MAX_BODY_SIZE:-100m}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256m
+
+
+  certbot:
+    image: certbot/certbot:latest
+    profiles:
+      - certbot
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+
 volumes:
   cor_pgdata:
+  letsencrypt:
+  certbot_www:
