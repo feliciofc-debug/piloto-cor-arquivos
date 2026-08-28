@@ -48,6 +48,46 @@ async function reabrirJob(client, job) {
   );
 }
 
+async function recuperarAnalisesExpiradas(client) {
+  const result = await client.query(
+    `select id, frames, created_at
+     from ocorrencias
+     where status = 'analisando'
+       and jsonb_typeof(frames) = 'array'
+       and jsonb_array_length(frames) > 0
+       and created_at < now() - ($1::int * interval '1 minute')
+     order by created_at asc
+     for update skip locked`,
+    [config.analiseTimeoutMinutes],
+  );
+
+  for (const ocorrencia of result.rows) {
+    await client.query(
+      `update ocorrencias
+       set status = 'aguardando_operador',
+           fatos = null,
+           confianca = null
+       where id = $1`,
+      [ocorrencia.id],
+    );
+
+    await client.query(
+      `insert into auditoria (ocorrencia_id, evento, ator, detalhe)
+       values ($1, 'analise_falhou', 'sistema', $2::jsonb)`,
+      [
+        ocorrencia.id,
+        JSON.stringify({
+          erro: 'analise expirou',
+          timeout_minutes: config.analiseTimeoutMinutes,
+          frames: ocorrencia.frames,
+        }),
+      ],
+    );
+  }
+
+  return result.rowCount;
+}
+
 async function runFrameMaintenance(log = console) {
   const client = await pool.connect();
 
@@ -72,10 +112,15 @@ async function runFrameMaintenance(log = console) {
       }
     }
 
+    const analisesRecuperadas = await recuperarAnalisesExpiradas(client);
+
     await client.query('commit');
 
-    if (result.rowCount > 0) {
-      log.info({ jobs: result.rowCount }, 'manutencao de frame_jobs executada');
+    if (result.rowCount > 0 || analisesRecuperadas > 0) {
+      log.info(
+        { jobs: result.rowCount, analises_recuperadas: analisesRecuperadas },
+        'manutencao de frame_jobs executada',
+      );
     }
   } catch (error) {
     await client.query('rollback').catch(() => {});
