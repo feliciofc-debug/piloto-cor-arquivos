@@ -46,6 +46,7 @@ const config = {
   visionModel: env('VISION_MODEL', 'google/gemini-2.5-pro'),
   visionApiKey: env('VISION_API_KEY'),
   visionApiBaseUrl: env('VISION_API_BASE_URL', 'https://ai.gateway.lovable.dev/v1').replace(/\/$/, ''),
+  visionApiPath: env('VISION_API_PATH', '/chat/completions'),
   visionTimeoutMs: Number(env('VISION_TIMEOUT_MS', '60000')),
   visionMaxFrames: Number(env('VISION_MAX_FRAMES', '10')),
 };
