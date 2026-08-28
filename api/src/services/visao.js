@@ -69,15 +69,12 @@ function selecionarAmostra(frames, limite) {
 
 function mimeTypeFor(framePath) {
   const ext = path.extname(framePath).toLowerCase();
-
   if (ext === '.png') {
     return 'image/png';
   }
-
   if (ext === '.webp') {
     return 'image/webp';
   }
-
   return 'image/jpeg';
 }
 
@@ -160,7 +157,11 @@ function authHeadersPorProvedor() {
 }
 
 async function chamarChatCompletions({ imagens, signal }) {
-  const response = await fetch(`${config.visionApiBaseUrl}/chat/completions`, {
+  const visionPath = config.visionApiPath.startsWith('/')
+    ? config.visionApiPath
+    : `/${config.visionApiPath}`;
+
+  const response = await fetch(`${config.visionApiBaseUrl}${visionPath}`, {
     method: 'POST',
     signal,
     headers: {
@@ -228,6 +229,7 @@ async function analisarFrames({ frames }) {
   const inicio = Date.now();
   const selecionados = selecionarAmostra(frames, config.visionMaxFrames);
   const imagens = await Promise.all(selecionados.map(frameToImageContent));
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.visionTimeoutMs);
 
