@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const { config } = require('../config');
 const { pool } = require('../db');
+const { analisarOcorrencia } = require('../services/analise-ocorrencia');
 
 function hashToken(token) {
   return crypto.createHash('sha256').update(token || '').digest();
@@ -17,7 +18,7 @@ function tokenValido(recebido) {
   );
 }
 
-function autenticarWorker(request, reply) {
+async function autenticarWorker(request, reply) {
   const token = request.headers['x-worker-token'];
   const tokenTexto = Array.isArray(token) ? token[0] : token;
 
@@ -184,10 +185,7 @@ async function workerRoutes(fastify) {
         await client.query(
           `update ocorrencias
            set frames = $2::jsonb,
-               frame_principal = $3,
-               -- Passo 3: ainda nao ha analise de visao; liberamos para validacao humana.
-               -- No passo 4, este encadeamento passa pela analise antes do operador.
-               status = 'aguardando_operador'
+               frame_principal = $3
            where id = $1`,
           [
             job.ocorrencia_id,
@@ -211,6 +209,11 @@ async function workerRoutes(fastify) {
         );
 
         await client.query('commit');
+
+        // A analise de visao roda fora da resposta ao worker para nao travar a fila.
+        setImmediate(() => {
+          analisarOcorrencia(job.ocorrencia_id, fastify.log);
+        });
 
         return { ok: true };
       }
