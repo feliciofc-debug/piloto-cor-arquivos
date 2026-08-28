@@ -1,13 +1,18 @@
+`api/src/services/analise-ocorrencia.js`
+
+```js
 const { pool } = require('../db');
 const { config } = require('../config');
 const { analisarFrames } = require('./visao');
+const { casarProtocolos } = require('./protocolos');
 
 async function atualizarFalhaAnalise(client, ocorrenciaId, error, detalheExtra = {}) {
   await client.query(
     `update ocorrencias
      set status = 'aguardando_operador',
          fatos = null,
-         confianca = null
+         confianca = null,
+         protocolos_casados = '[]'::jsonb
      where id = $1`,
     [ocorrenciaId],
   );
@@ -55,18 +60,27 @@ async function analisarOcorrencia(ocorrenciaId, log = console) {
     try {
       await client.query('begin');
 
-      await client.query(
+      const casamento = await casarProtocolos(resultado.fatos, client);
+
+      const updateResult = await client.query(
         `update ocorrencias
          set status = 'aguardando_operador',
              fatos = $2::jsonb,
-             confianca = $3
-         where id = $1`,
+             confianca = $3,
+             protocolos_casados = $4::jsonb
+         where id = $1
+           and status = 'analisando'`,
         [
           ocorrenciaId,
           JSON.stringify(resultado.fatos),
           resultado.fatos.confianca,
+          JSON.stringify(casamento.protocolos),
         ],
       );
+
+      if (updateResult.rowCount === 0) {
+        throw new Error('ocorrencia nao esta mais em analisando; protocolos_casados nao foi sobrescrito');
+      }
 
       await client.query(
         `insert into auditoria (ocorrencia_id, evento, ator, detalhe)
@@ -83,11 +97,86 @@ async function analisarOcorrencia(ocorrenciaId, log = console) {
         ],
       );
 
+      await client.query(
+        `insert into auditoria (ocorrencia_id, evento, ator, detalhe)
+         values ($1, 'protocolos_casados', 'sistema', $2::jsonb)`,
+        [
+          ocorrenciaId,
+          JSON.stringify({
+            protocolos: casamento.protocolos,
+            quantidade: casamento.protocolos.length,
+            confianca: resultado.fatos.confianca,
+            acionamentos_suprimidos: casamento.acionamentos_suprimidos,
+            ...(casamento.acionamentos_suprimidos
+              ? { motivo_supressao: 'confianca_baixa' }
+              : {}),
+          }),
+        ],
+      );
+
       await client.query('commit');
       log.info({ ocorrencia_id: ocorrenciaId }, 'analise de visao concluida');
     } catch (error) {
       await client.query('rollback').catch(() => {});
-      throw error;
+
+      const fallbackClient = await pool.connect();
+
+      try {
+        await fallbackClient.query('begin');
+        await fallbackClient.query(
+          `update ocorrencias
+           set status = 'aguardando_operador',
+               fatos = $2::jsonb,
+               confianca = $3,
+               protocolos_casados = '[]'::jsonb
+           where id = $1
+             and status = 'analisando'`,
+          [
+            ocorrenciaId,
+            JSON.stringify(resultado.fatos),
+            resultado.fatos.confianca,
+          ],
+        );
+
+        await fallbackClient.query(
+          `insert into auditoria (ocorrencia_id, evento, ator, detalhe)
+           values ($1, 'analisada', 'sistema', $2::jsonb)`,
+          [
+            ocorrenciaId,
+            JSON.stringify({
+              fatos: resultado.fatos,
+              provider: resultado.provider,
+              model: resultado.model,
+              duracao_ms: resultado.duracao_ms,
+              frames_enviados: resultado.frames_enviados,
+            }),
+          ],
+        );
+
+        await fallbackClient.query(
+          `insert into auditoria (ocorrencia_id, evento, ator, detalhe)
+           values ($1, 'casamento_falhou', 'sistema', $2::jsonb)`,
+          [
+            ocorrenciaId,
+            JSON.stringify({
+              erro: error.message || String(error),
+              fatos: resultado.fatos,
+              provider: resultado.provider,
+              model: resultado.model,
+              duracao_ms: resultado.duracao_ms,
+              frames_enviados: resultado.frames_enviados,
+            }),
+          ],
+        );
+
+        await fallbackClient.query('commit');
+        log.error({ err: error, ocorrencia_id: ocorrenciaId }, 'casamento de protocolos falhou');
+      } catch (fallbackError) {
+        await fallbackClient.query('rollback').catch(() => {});
+        throw fallbackError;
+      } finally {
+        fallbackClient.release();
+      }
     } finally {
       client.release();
     }
@@ -114,3 +203,4 @@ module.exports = {
   analisarOcorrencia,
   atualizarFalhaAnalise,
 };
+```
