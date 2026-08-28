@@ -1,6 +1,4 @@
-`db/verificacao.sql`
 
-```sql
 -- Verificacao do schema inicial do Piloto COR.
 -- Rode depois de aplicar as migracoes em db/migrations/.
 --
@@ -580,4 +578,3 @@ select
   detalhe
 from verificacao_resultados
 order by id;
-```
