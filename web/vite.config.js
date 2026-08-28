@@ -9,6 +9,7 @@ export default defineConfig({
       '/auth': 'http://127.0.0.1:8091',
       '/ocorrencias': 'http://127.0.0.1:8091',
       '/midia': 'http://127.0.0.1:8091',
+      '/protocolos': 'http://127.0.0.1:8091',
     },
   },
 })

@@ -263,6 +263,7 @@ async function analisarFrames({ frames }) {
 
 module.exports = {
   analisarFrames,
+  authHeadersPorProvedor,
   selecionarAmostra,
   visionSchema,
 };

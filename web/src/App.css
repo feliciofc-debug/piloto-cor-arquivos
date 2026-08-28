@@ -88,6 +88,21 @@
   gap: 18px;
 }
 
+.topbar-nav {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.topbar-nav a {
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  border-radius: 999px;
+  color: #ffffff;
+  font-weight: 800;
+  padding: 8px 13px;
+  text-decoration: none;
+}
+
 .page {
   margin: 0 auto;
   max-width: 1440px;
@@ -130,6 +145,55 @@
   gap: 18px;
   grid-template-columns: 240px minmax(240px, 1fr) auto;
   margin-bottom: 24px;
+}
+
+.upload-card {
+  align-items: center;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-bottom: 24px;
+}
+
+.upload-card h2 {
+  color: var(--text-strong);
+  margin: 0 0 6px;
+}
+
+.file-button {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  text-align: center;
+}
+
+.file-button input {
+  display: none;
+}
+
+.progress {
+  align-items: center;
+  background: #dbe7f3;
+  border-radius: 999px;
+  display: flex;
+  grid-column: 1 / -1;
+  height: 32px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress div {
+  background: var(--cor-blue);
+  height: 100%;
+}
+
+.progress span {
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 800;
+  left: 50%;
+  position: absolute;
+  transform: translateX(-50%);
 }
 
 .form-stack,
@@ -424,6 +488,48 @@ dd {
   padding: 18px;
 }
 
+.protocol-table {
+  display: grid;
+  gap: 18px;
+}
+
+.protocol-row {
+  display: grid;
+  gap: 18px;
+}
+
+.protocol-row-header {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.protocol-row-header h2 {
+  color: var(--text-strong);
+  margin: 0 0 8px;
+}
+
+.criteria-readable {
+  display: grid;
+  gap: 14px;
+}
+
+.criteria-readable strong {
+  color: var(--cor-blue);
+  display: block;
+  font-size: 0.85rem;
+  letter-spacing: 0.14em;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.criteria-readable ul,
+.import-result ul {
+  margin: 0;
+  padding-left: 22px;
+}
+
 .action-list {
   color: var(--text-strong);
   font-weight: 700;
@@ -492,6 +598,7 @@ dd {
 @media (max-width: 980px) {
   .topbar,
   .topbar-actions,
+  .topbar-nav,
   .card-title-row {
     align-items: flex-start;
     flex-direction: column;
@@ -500,6 +607,8 @@ dd {
   .filters,
   .card-link,
   .frame-navigation,
+  .protocol-row-header,
+  .upload-card,
   .detail-layout {
     grid-template-columns: 1fr;
   }

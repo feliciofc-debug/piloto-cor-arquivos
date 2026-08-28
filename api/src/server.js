@@ -6,6 +6,7 @@ const authPlugin = require('./plugins/auth');
 const authRoutes = require('./routes/auth');
 const healthRoutes = require('./routes/health');
 const ocorrenciasRoutes = require('./routes/ocorrencias');
+const protocolosRoutes = require('./routes/protocolos');
 const workerRoutes = require('./routes/worker');
 const { startFrameMaintenance } = require('./services/frame-maintenance');
 
@@ -34,6 +35,7 @@ async function buildServer() {
   await fastify.register(healthRoutes);
   await fastify.register(authRoutes);
   await fastify.register(ocorrenciasRoutes);
+  await fastify.register(protocolosRoutes);
   await fastify.register(workerRoutes);
 
   return fastify;

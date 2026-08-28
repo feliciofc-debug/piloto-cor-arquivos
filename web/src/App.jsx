@@ -35,6 +35,21 @@ const fatoLabels = {
   observacao: 'Observação',
 };
 
+const criterioLabels = {
+  'veiculos.carro': 'Carros',
+  'veiculos.moto': 'Motos',
+  'veiculos.caminhao': 'Caminhões',
+  'veiculos.onibus': 'Ônibus',
+  pessoa_na_pista: 'Pessoa na pista',
+  pessoa_ao_solo: 'Pessoa ao solo',
+  fogo: 'Fogo',
+  fumaca: 'Fumaça',
+  carga_derramada: 'Carga derramada',
+  agua_na_pista: 'Água na pista',
+  veiculo_parado: 'Veículo parado',
+  bloqueio_via: 'Bloqueio da via',
+};
+
 function navegar(path) {
   window.history.pushState({}, '', path);
   window.dispatchEvent(new PopStateEvent('popstate'));
@@ -66,6 +81,44 @@ async function api(path, options = {}) {
   return response.json();
 }
 
+function uploadArquivo(path, file, onProgress) {
+  return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    formData.append('arquivo', file);
+
+    const request = new XMLHttpRequest();
+    request.open('POST', path);
+    request.withCredentials = true;
+
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable && typeof onProgress === 'function') {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+
+    request.onload = () => {
+      let payload = {};
+      try {
+        payload = JSON.parse(request.responseText || '{}');
+      } catch {
+        payload = {};
+      }
+
+      if (request.status >= 200 && request.status < 300) {
+        resolve(payload);
+        return;
+      }
+
+      const error = new Error(payload.error || 'Falha no envio do arquivo.');
+      error.status = request.status;
+      reject(error);
+    };
+
+    request.onerror = () => reject(new Error('Falha de rede no envio do arquivo.'));
+    request.send(formData);
+  });
+}
+
 function formatarData(value) {
   if (!value) {
     return 'Sem horário';
@@ -92,6 +145,42 @@ function formatarValor(value) {
   }
 
   return String(value);
+}
+
+function formatarOperador(operador) {
+  if (operador === 'igual') {
+    return 'igual a';
+  }
+  if (operador === 'maior_que') {
+    return 'maior que';
+  }
+  if (operador === 'menor_que') {
+    return 'menor que';
+  }
+  return operador;
+}
+
+function formatarCondicao(condicao) {
+  const operador = ['igual', 'maior_que', 'menor_que'].find((item) => (
+    Object.hasOwn(condicao, item)
+  ));
+
+  if (!operador) {
+    return `${criterioLabels[condicao.campo] || condicao.campo} sem operador`;
+  }
+
+  return `${criterioLabels[condicao.campo] || condicao.campo} ${formatarOperador(operador)} ${formatarValor(condicao[operador])}`;
+}
+
+function contarCriterios(criterios) {
+  if (!criterios || typeof criterios !== 'object') {
+    return 0;
+  }
+
+  return ['todos', 'algum', 'nenhum'].reduce((total, chave) => {
+    const condicoes = criterios[chave];
+    return total + (Array.isArray(condicoes) ? condicoes.length : 0);
+  }, 0);
 }
 
 function listaFatos(fatos) {
@@ -225,6 +314,14 @@ function AppShell({ children }) {
       <header className="topbar">
         <BrandHeader compact />
         <div className="topbar-actions">
+          <nav className="topbar-nav" aria-label="Navegação principal">
+            <a href="/ocorrencias" onClick={(event) => { event.preventDefault(); navegar('/ocorrencias'); }}>
+              Ocorrências
+            </a>
+            <a href="/protocolos" onClick={(event) => { event.preventDefault(); navegar('/protocolos'); }}>
+              Protocolos
+            </a>
+          </nav>
           <span>{usuario?.nome || usuario?.email}</span>
           <button type="button" className="button button-ghost" onClick={logout}>
             Sair
@@ -357,6 +454,9 @@ function OcorrenciasPage() {
   const [tunel, setTunel] = useState('');
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
+  const [uploadErro, setUploadErro] = useState('');
+  const [uploadProgresso, setUploadProgresso] = useState(0);
+  const [enviandoVideo, setEnviandoVideo] = useState(false);
 
   const carregar = useCallback(async () => {
     const params = new URLSearchParams();
@@ -385,11 +485,57 @@ function OcorrenciasPage() {
     return () => window.clearInterval(intervalId);
   }, [carregar]);
 
+  async function enviarVideo(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) {
+      return;
+    }
+
+    setUploadErro('');
+    setUploadProgresso(0);
+    setEnviandoVideo(true);
+
+    try {
+      const data = await uploadArquivo('/ocorrencias/upload', file, setUploadProgresso);
+      navegar(`/ocorrencias/${data.ocorrencia_id}`);
+    } catch (error) {
+      setUploadErro(error.message);
+    } finally {
+      setEnviandoVideo(false);
+    }
+  }
+
   return (
     <AppShell>
       <section className="page-heading">
         <p className="eyebrow">Fila do operador</p>
         <h1>Ocorrências</h1>
+      </section>
+
+      <section className="card upload-card">
+        <div>
+          <p className="eyebrow">Demonstração</p>
+          <h2>Enviar vídeo do acervo</h2>
+          <p>O sistema extrai os frames, analisa a cena e cruza os fatos com os protocolos ativos.</p>
+        </div>
+        <label className="button button-primary file-button">
+          {enviandoVideo ? 'Enviando...' : 'Enviar vídeo'}
+          <input
+            type="file"
+            accept="video/mp4,video/quicktime,video/x-matroska,video/x-msvideo,.mp4,.mov,.mkv,.avi"
+            onChange={enviarVideo}
+            disabled={enviandoVideo}
+          />
+        </label>
+        {enviandoVideo ? (
+          <div className="progress">
+            <div style={{ width: `${uploadProgresso}%` }} />
+            <span>{uploadProgresso}%</span>
+          </div>
+        ) : null}
+        {uploadErro ? <p className="alert alert-error">{uploadErro}</p> : null}
       </section>
 
       <section className="filters card">
@@ -589,6 +735,15 @@ function OcorrenciaDetalhePage({ id }) {
     carregar();
   }, [carregar]);
 
+  useEffect(() => {
+    if (detalhe?.ocorrencia?.status !== 'analisando') {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(carregar, 5000);
+    return () => window.clearInterval(intervalId);
+  }, [carregar, detalhe?.ocorrencia?.status]);
+
   const sequenciaFrames = useMemo(() => (
     normalizarFrames(detalhe?.ocorrencia?.frames, detalhe?.ocorrencia?.frame_principal)
   ), [detalhe]);
@@ -757,6 +912,208 @@ function OcorrenciaDetalhePage({ id }) {
   );
 }
 
+function CriteriosLegiveis({ criterios }) {
+  const grupos = [
+    ['todos', 'Todos'],
+    ['algum', 'Algum'],
+    ['nenhum', 'Nenhum'],
+  ];
+
+  if (contarCriterios(criterios) === 0) {
+    return <p className="muted">Sem critérios cadastrados.</p>;
+  }
+
+  return (
+    <div className="criteria-readable">
+      {grupos.map(([chave, label]) => {
+        const condicoes = Array.isArray(criterios?.[chave]) ? criterios[chave] : [];
+        if (condicoes.length === 0) {
+          return null;
+        }
+
+        return (
+          <div key={chave}>
+            <strong>{label}</strong>
+            <ul>
+              {condicoes.map((condicao, index) => (
+                <li key={`${chave}-${index}`}>{formatarCondicao(condicao)}</li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProtocolosPage() {
+  const [protocolos, setProtocolos] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState('');
+  const [importando, setImportando] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [resultadoImportacao, setResultadoImportacao] = useState(null);
+
+  const carregar = useCallback(async () => {
+    try {
+      const data = await api('/protocolos');
+      setProtocolos(data.protocolos || []);
+      setErro('');
+    } catch (error) {
+      setErro(error.message);
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect
+    carregar();
+  }, [carregar]);
+
+  async function importarPdf(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) {
+      return;
+    }
+
+    setErro('');
+    setResultadoImportacao(null);
+    setImportProgress(0);
+    setImportando(true);
+
+    try {
+      const data = await uploadArquivo('/protocolos/importar', file, setImportProgress);
+      setResultadoImportacao(data);
+      await carregar();
+    } catch (error) {
+      setErro(error.message);
+    } finally {
+      setImportando(false);
+    }
+  }
+
+  async function alterarAtivo(protocolo) {
+    try {
+      await api(`/protocolos/${protocolo.id}/ativo`, {
+        method: 'PATCH',
+        body: JSON.stringify({ ativo: !protocolo.ativo }),
+      });
+      await carregar();
+    } catch (error) {
+      setErro(error.message);
+    }
+  }
+
+  return (
+    <AppShell>
+      <section className="page-heading">
+        <p className="eyebrow">Calibração</p>
+        <h1>Protocolos</h1>
+      </section>
+
+      <section className="card upload-card">
+        <div>
+          <p className="eyebrow">Importação</p>
+          <h2>Enviar PDF de protocolos</h2>
+          <p>O modelo extrai protocolos, e o sistema grava apenas o que passa na validação.</p>
+        </div>
+        <label className="button button-primary file-button">
+          {importando ? 'Importando...' : 'Importar PDF'}
+          <input
+            type="file"
+            accept="application/pdf,.pdf"
+            onChange={importarPdf}
+            disabled={importando}
+          />
+        </label>
+        {importando ? (
+          <div className="progress">
+            <div style={{ width: `${importProgress}%` }} />
+            <span>{importProgress}%</span>
+          </div>
+        ) : null}
+      </section>
+
+      {erro ? <p className="alert alert-error">{erro}</p> : null}
+      {resultadoImportacao ? (
+        <section className="card import-result">
+          <h2>Resultado da importação</h2>
+          <p>{resultadoImportacao.importados} protocolo(s) importado(s).</p>
+          {resultadoImportacao.codigos_importados?.length > 0 ? (
+            <p>Códigos: {resultadoImportacao.codigos_importados.join(', ')}</p>
+          ) : null}
+          {resultadoImportacao.recusados?.length > 0 ? (
+            <div>
+              <strong>Recusados</strong>
+              <ul>
+                {resultadoImportacao.recusados.map((item, index) => (
+                  <li key={`${item.codigo}-${index}`}>
+                    {item.codigo || 'Sem código'} - {item.motivo}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {carregando ? <p className="loading">Carregando protocolos...</p> : null}
+
+      <section className="protocol-table">
+        {protocolos.map((protocolo) => (
+          <article className="card protocol-row" key={protocolo.id}>
+            <div className="protocol-row-header">
+              <div>
+                <p className="eyebrow">{protocolo.codigo}</p>
+                <h2>{protocolo.nome}</h2>
+                <p>{protocolo.descricao}</p>
+              </div>
+              <button
+                type="button"
+                className={protocolo.ativo ? 'button button-secondary' : 'button button-primary'}
+                onClick={() => alterarAtivo(protocolo)}
+              >
+                {protocolo.ativo ? 'Desativar' : 'Ativar'}
+              </button>
+            </div>
+            <dl className="meta-grid">
+              <div>
+                <dt>Prioridade</dt>
+                <dd>{protocolo.prioridade}</dd>
+              </div>
+              <div>
+                <dt>Situação</dt>
+                <dd>{protocolo.ativo ? 'Ativo' : 'Inativo'}</dd>
+              </div>
+              <div>
+                <dt>Origem</dt>
+                <dd>{protocolo.origem === 'pdf' ? 'PDF' : 'Manual'}</dd>
+              </div>
+              <div>
+                <dt>Critérios</dt>
+                <dd>{protocolo.quantidade_criterios ?? contarCriterios(protocolo.criterios)}</dd>
+              </div>
+            </dl>
+            {protocolo.origem_arquivo ? (
+              <p className="muted">
+                Arquivo de origem: {protocolo.origem_arquivo}
+                {protocolo.importado_em ? ` em ${formatarData(protocolo.importado_em)}` : ''}
+              </p>
+            ) : null}
+            <CriteriosLegiveis criterios={protocolo.criterios} />
+          </article>
+        ))}
+        {!carregando && protocolos.length === 0 ? (
+          <div className="empty-state card">Nenhum protocolo encontrado.</div>
+        ) : null}
+      </section>
+    </AppShell>
+  );
+}
+
 function Router() {
   const { usuario, carregando } = useSession();
   const [path, setPath] = useState(window.location.pathname);
@@ -783,6 +1140,10 @@ function Router() {
 
   if (!usuario) {
     return <LoginPage />;
+  }
+
+  if (path === '/protocolos') {
+    return <ProtocolosPage />;
   }
 
   const detalheMatch = path.match(/^\/ocorrencias\/([^/]+)$/);
