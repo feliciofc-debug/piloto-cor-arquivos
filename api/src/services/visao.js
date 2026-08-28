@@ -147,13 +147,25 @@ function validarFatos(fatos) {
   return fatos;
 }
 
-async function chamarOpenAICompativel({ imagens, signal }) {
+function authHeadersPorProvedor() {
+  if (config.visionProvider === 'lovable') {
+    return {
+      'Lovable-API-Key': config.visionApiKey,
+    };
+  }
+
+  return {
+    authorization: `Bearer ${config.visionApiKey}`,
+  };
+}
+
+async function chamarChatCompletions({ imagens, signal }) {
   const response = await fetch(`${config.visionApiBaseUrl}/chat/completions`, {
     method: 'POST',
     signal,
     headers: {
-      authorization: `Bearer ${config.visionApiKey}`,
       'content-type': 'application/json',
+      ...authHeadersPorProvedor(),
     },
     body: JSON.stringify({
       model: config.visionModel,
@@ -183,6 +195,11 @@ async function chamarOpenAICompativel({ imagens, signal }) {
       ],
     }),
   });
+
+  if (response.status === 429) {
+    const retryAfter = response.headers.get('retry-after') || 'nao informado';
+    throw new Error(`limite de taxa do provedor de visao atingido; Retry-After: ${retryAfter}`);
+  }
 
   if (!response.ok) {
     const body = await response.text();
@@ -217,8 +234,8 @@ async function analisarFrames({ frames }) {
   try {
     let fatos;
 
-    if (['openai', 'openai-compatible'].includes(config.visionProvider)) {
-      fatos = await chamarOpenAICompativel({
+    if (['openai', 'openai-compatible', 'lovable'].includes(config.visionProvider)) {
+      fatos = await chamarChatCompletions({
         imagens,
         signal: controller.signal,
       });
