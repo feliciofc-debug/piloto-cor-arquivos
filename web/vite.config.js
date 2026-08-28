@@ -7,9 +7,17 @@ export default defineConfig({
     host: '0.0.0.0',
     proxy: {
       '/auth': 'http://127.0.0.1:8091',
-      '/ocorrencias': 'http://127.0.0.1:8091',
+      '/ocorrencias': {
+        target: 'http://127.0.0.1:8091',
+        timeout: 120000,
+        proxyTimeout: 120000,
+      },
       '/midia': 'http://127.0.0.1:8091',
-      '/protocolos': 'http://127.0.0.1:8091',
+      '/protocolos': {
+        target: 'http://127.0.0.1:8091',
+        timeout: 120000,
+        proxyTimeout: 120000,
+      },
     },
   },
 })

@@ -160,14 +160,7 @@
   margin: 0 0 6px;
 }
 
-.file-button {
-  align-items: center;
-  display: inline-flex;
-  justify-content: center;
-  text-align: center;
-}
-
-.file-button input {
+.file-input-hidden {
   display: none;
 }
 
@@ -194,6 +187,10 @@
   left: 50%;
   position: absolute;
   transform: translateX(-50%);
+}
+
+.upload-note {
+  grid-column: 1 / -1;
 }
 
 .form-stack,

@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import './App.css';
@@ -81,7 +82,7 @@ async function api(path, options = {}) {
   return response.json();
 }
 
-function uploadArquivo(path, file, onProgress) {
+function uploadArquivo(path, file, onProgress, timeoutMs = 120000) {
   return new Promise((resolve, reject) => {
     const formData = new FormData();
     formData.append('arquivo', file);
@@ -89,10 +90,17 @@ function uploadArquivo(path, file, onProgress) {
     const request = new XMLHttpRequest();
     request.open('POST', path);
     request.withCredentials = true;
+    request.timeout = timeoutMs;
 
     request.upload.onprogress = (event) => {
       if (event.lengthComputable && typeof onProgress === 'function') {
         onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+
+    request.upload.onload = () => {
+      if (typeof onProgress === 'function') {
+        onProgress(100);
       }
     };
 
@@ -115,6 +123,8 @@ function uploadArquivo(path, file, onProgress) {
     };
 
     request.onerror = () => reject(new Error('Falha de rede no envio do arquivo.'));
+    request.ontimeout = () => reject(new Error('Tempo limite excedido. A importação pode levar até um minuto; tente novamente.'));
+    request.onabort = () => reject(new Error('Envio cancelado.'));
     request.send(formData);
   });
 }
@@ -449,6 +459,7 @@ function OcorrenciaCard({ ocorrencia }) {
 }
 
 function OcorrenciasPage() {
+  const videoInputRef = useRef(null);
   const [ocorrencias, setOcorrencias] = useState([]);
   const [status, setStatus] = useState('');
   const [tunel, setTunel] = useState('');
@@ -520,15 +531,22 @@ function OcorrenciasPage() {
           <h2>Enviar vídeo do acervo</h2>
           <p>O sistema extrai os frames, analisa a cena e cruza os fatos com os protocolos ativos.</p>
         </div>
-        <label className="button button-primary file-button">
+        <button
+          type="button"
+          className="button button-primary"
+          disabled={enviandoVideo}
+          onClick={() => videoInputRef.current?.click()}
+        >
           {enviandoVideo ? 'Enviando...' : 'Enviar vídeo'}
-          <input
-            type="file"
-            accept="video/mp4,video/quicktime,video/x-matroska,video/x-msvideo,.mp4,.mov,.mkv,.avi"
-            onChange={enviarVideo}
-            disabled={enviandoVideo}
-          />
-        </label>
+        </button>
+        <input
+          ref={videoInputRef}
+          className="file-input-hidden"
+          type="file"
+          accept="video/mp4,video/quicktime,video/x-matroska,video/x-msvideo,.mp4,.mov,.mkv,.avi"
+          onChange={enviarVideo}
+          disabled={enviandoVideo}
+        />
         {enviandoVideo ? (
           <div className="progress">
             <div style={{ width: `${uploadProgresso}%` }} />
@@ -947,6 +965,7 @@ function CriteriosLegiveis({ criterios }) {
 }
 
 function ProtocolosPage() {
+  const pdfInputRef = useRef(null);
   const [protocolos, setProtocolos] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
@@ -1020,20 +1039,34 @@ function ProtocolosPage() {
           <h2>Enviar PDF de protocolos</h2>
           <p>O modelo extrai protocolos, e o sistema grava apenas o que passa na validação.</p>
         </div>
-        <label className="button button-primary file-button">
+        <button
+          type="button"
+          className="button button-primary"
+          disabled={importando}
+          onClick={() => pdfInputRef.current?.click()}
+        >
           {importando ? 'Importando...' : 'Importar PDF'}
-          <input
-            type="file"
-            accept="application/pdf,.pdf"
-            onChange={importarPdf}
-            disabled={importando}
-          />
-        </label>
+        </button>
+        <input
+          ref={pdfInputRef}
+          className="file-input-hidden"
+          type="file"
+          accept="application/pdf,.pdf"
+          onChange={importarPdf}
+          disabled={importando}
+        />
         {importando ? (
-          <div className="progress">
-            <div style={{ width: `${importProgress}%` }} />
-            <span>{importProgress}%</span>
-          </div>
+          <>
+            <div className="progress">
+              <div style={{ width: `${importProgress}%` }} />
+              <span>{importProgress}%</span>
+            </div>
+            <p className="muted upload-note">
+              {importProgress < 100
+                ? 'Enviando PDF para análise.'
+                : 'PDF enviado. A análise dos protocolos pode levar até um minuto.'}
+            </p>
+          </>
         ) : null}
       </section>
 
