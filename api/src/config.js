@@ -41,6 +41,13 @@ const config = {
   frameJobTimeoutMinutes: Number(env('FRAME_JOB_TIMEOUT_MINUTES', '5')),
   frameJobMaxAttempts: Number(env('FRAME_JOB_MAX_ATTEMPTS', '3')),
   frameMaintenanceIntervalMs: Number(env('FRAME_MAINTENANCE_INTERVAL_MS', '60000')),
+  analiseTimeoutMinutes: Number(env('ANALISE_TIMEOUT_MINUTES', '10')),
+  visionProvider: env('VISION_PROVIDER', 'lovable'),
+  visionModel: env('VISION_MODEL', 'google/gemini-2.5-pro'),
+  visionApiKey: env('VISION_API_KEY'),
+  visionApiBaseUrl: env('VISION_API_BASE_URL', 'https://ai.gateway.lovable.dev/v1').replace(/\/$/, ''),
+  visionTimeoutMs: Number(env('VISION_TIMEOUT_MS', '60000')),
+  visionMaxFrames: Number(env('VISION_MAX_FRAMES', '10')),
 };
 
 function assertServerConfig() {
@@ -60,6 +67,14 @@ function assertServerConfig() {
 
   if (!Number.isFinite(config.uploadMaxBytes) || config.uploadMaxBytes <= 0) {
     throw new Error('UPLOAD_MAX_BYTES precisa ser um numero positivo.');
+  }
+
+  if (!Number.isInteger(config.visionTimeoutMs) || config.visionTimeoutMs <= 0) {
+    throw new Error('VISION_TIMEOUT_MS precisa ser um numero inteiro positivo.');
+  }
+
+  if (!Number.isInteger(config.visionMaxFrames) || config.visionMaxFrames <= 0) {
+    throw new Error('VISION_MAX_FRAMES precisa ser um numero inteiro positivo.');
   }
 }
 
