@@ -1,0 +1,36 @@
+:root {
+  --cor-blue: #133a6b;
+  --page-bg: #f3f6fa;
+  --text: #243246;
+  --text-strong: #102238;
+  --muted: #66768a;
+  --border: #dce4ee;
+  --sans: Arial, Helvetica, sans-serif;
+
+  color: var(--text);
+  font: 18px/1.45 var(--sans);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+a {
+  color: inherit;
+}
