@@ -82,12 +82,44 @@ function camposDoProtocolo(protocolo) {
   return campos;
 }
 
+const camposPorTipoEvidencia = {
+  veiculo: ['veiculo_parado', 'veiculos.carro', 'veiculos.moto', 'veiculos.caminhao', 'veiculos.onibus'],
+  pessoa: ['pessoa_na_pista', 'pessoa_ao_solo'],
+  fogo: ['fogo'],
+  fumaca: ['fumaca'],
+  agua: ['agua_na_pista'],
+  carga: ['carga_derramada'],
+};
+
 function selecionarFrameEvidencia(ocorrencia, protocolo) {
   const frames = Array.isArray(ocorrencia.frames) ? ocorrencia.frames : [];
   const evidencias = ocorrencia.fatos?.frame_evidencia;
 
+  const campos = camposDoProtocolo(protocolo);
+
+  if (Array.isArray(evidencias)) {
+    const tiposRelacionados = new Set();
+    for (const [tipo, camposTipo] of Object.entries(camposPorTipoEvidencia)) {
+      if (campos.some((campo) => camposTipo.includes(campo))) {
+        tiposRelacionados.add(tipo);
+      }
+    }
+
+    const evidenciaRelacionada = evidencias.find((item) => (
+      tiposRelacionados.has(item.tipo) && Number.isInteger(item.frame) && frames[item.frame]
+    ));
+
+    if (evidenciaRelacionada) {
+      return frames[evidenciaRelacionada.frame];
+    }
+
+    const primeiraEvidencia = evidencias.find((item) => Number.isInteger(item.frame) && frames[item.frame]);
+    if (primeiraEvidencia) {
+      return frames[primeiraEvidencia.frame];
+    }
+  }
+
   if (evidencias && typeof evidencias === 'object' && !Array.isArray(evidencias)) {
-    const campos = camposDoProtocolo(protocolo);
     for (const campo of campos) {
       const indice = evidencias[campo];
       if (Number.isInteger(indice) && frames[indice]) {

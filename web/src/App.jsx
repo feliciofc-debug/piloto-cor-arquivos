@@ -51,6 +51,25 @@ const criterioLabels = {
   bloqueio_via: 'Bloqueio da via',
 };
 
+const tipoEvidenciaLabels = {
+  veiculo: 'Veículos',
+  pessoa: 'Pessoas',
+  fogo: 'Fogo',
+  fumaca: 'Fumaça',
+  agua: 'Água',
+  carga: 'Carga',
+  outro: 'Outros',
+};
+
+const camposPorTipoEvidencia = {
+  veiculo: ['veiculo_parado', 'veiculos.carro', 'veiculos.moto', 'veiculos.caminhao', 'veiculos.onibus'],
+  pessoa: ['pessoa_na_pista', 'pessoa_ao_solo'],
+  fogo: ['fogo'],
+  fumaca: ['fumaca'],
+  agua: ['agua_na_pista'],
+  carga: ['carga_derramada'],
+};
+
 function navegar(path) {
   window.history.pushState({}, '', path);
   window.dispatchEvent(new PopStateEvent('popstate'));
@@ -369,13 +388,39 @@ function protocolosPorFatos(protocolos, fatos) {
   return relacionados.length > 0 ? relacionados : (Array.isArray(protocolos) ? protocolos : []);
 }
 
+function protocolosPorTipo(protocolos, tipo) {
+  const campos = camposPorTipoEvidencia[tipo] || [];
+  return protocolosPorFatos(protocolos, campos);
+}
+
 function montarEvidencias(ocorrencia) {
   const frames = normalizarFrames(ocorrencia.frames, ocorrencia.frame_principal);
   const evidencias = ocorrencia.fatos?.frame_evidencia;
 
+  if (Array.isArray(evidencias)) {
+    const lista = evidencias
+      .filter((item) => Number.isInteger(item?.frame) && frames[item.frame])
+      .map((item, index) => ({
+        id: `${item.tipo}-${item.frame}-${index}`,
+        frame: frames[item.frame],
+        tipo: item.tipo,
+        descricao: item.descricao,
+        fatos: [],
+        protocolos: protocolosPorTipo(ocorrencia.protocolos_casados, item.tipo),
+        fallback: false,
+      }));
+
+    if (lista.length > 0) {
+      return lista;
+    }
+  }
+
   if (!evidencias || typeof evidencias !== 'object' || Array.isArray(evidencias)) {
     return [{
+      id: 'fallback',
       frame: ocorrencia.frame_principal || frames[0] || '',
+      tipo: 'outro',
+      descricao: 'Frame principal da ocorrência.',
       fatos: [],
       protocolos: Array.isArray(ocorrencia.protocolos_casados) ? ocorrencia.protocolos_casados : [],
       fallback: true,
@@ -390,7 +435,10 @@ function montarEvidencias(ocorrencia) {
     }
 
     const atual = porFrame.get(indice) || {
+      id: `legado-${indice}`,
       frame: frames[indice],
+      tipo: 'outro',
+      descricao: 'Evidência registrada em formato anterior.',
       fatos: [],
     };
 
@@ -406,7 +454,10 @@ function montarEvidencias(ocorrencia) {
 
   if (lista.length === 0) {
     return [{
+      id: 'fallback',
       frame: ocorrencia.frame_principal || frames[0] || '',
+      tipo: 'outro',
+      descricao: 'Frame principal da ocorrência.',
       fatos: [],
       protocolos: Array.isArray(ocorrencia.protocolos_casados) ? ocorrencia.protocolos_casados : [],
       fallback: true,
@@ -414,6 +465,20 @@ function montarEvidencias(ocorrencia) {
   }
 
   return lista;
+}
+
+function agruparEvidencias(evidencias) {
+  const grupos = new Map();
+
+  for (const evidencia of evidencias) {
+    const tipo = evidencia.tipo || 'outro';
+    if (!grupos.has(tipo)) {
+      grupos.set(tipo, []);
+    }
+    grupos.get(tipo).push(evidencia);
+  }
+
+  return Array.from(grupos.entries()).map(([tipo, itens]) => ({ tipo, itens }));
 }
 
 function BrandHeader({ compact = false }) {
@@ -947,7 +1012,8 @@ function EvidenceCard({ evidencia, highlighted, onOpenImage, onProtocolClick }) 
       <div className="evidence-content">
         <div>
           <p className="eyebrow">Evidência identificada pela análise</p>
-          <h2>{evidencia.fallback ? 'Frame principal' : 'Fatos comprovados'}</h2>
+          <h2>{tipoEvidenciaLabels[evidencia.tipo] || 'Evidência'}</h2>
+          <p>{evidencia.descricao}</p>
           {evidencia.fatos.length > 0 ? (
             <div className="compact-list">
               {evidencia.fatos.map((fato) => (
@@ -1077,6 +1143,7 @@ function OcorrenciaDetalhePage({ id }) {
   const evidencias = useMemo(() => (
     detalhe ? montarEvidencias(detalhe.ocorrencia) : []
   ), [detalhe]);
+  const gruposEvidencia = useMemo(() => agruparEvidencias(evidencias), [evidencias]);
 
   const irParaFrame = useCallback((direcao) => {
     setFrameAtual((atual) => {
@@ -1104,6 +1171,33 @@ function OcorrenciaDetalhePage({ id }) {
     if (campos.length === 0) {
       setFramesDestacados([]);
       setAvisoEvidencia('Este protocolo não tem critérios preservados nesta ocorrência para vincular a um frame de evidência.');
+      return;
+    }
+
+    if (Array.isArray(evidenciasPorFato)) {
+      const tiposRelacionados = new Set();
+      for (const [tipo, camposTipo] of Object.entries(camposPorTipoEvidencia)) {
+        if (campos.some((campo) => camposTipo.includes(campo))) {
+          tiposRelacionados.add(tipo);
+        }
+      }
+
+      for (const evidencia of evidenciasPorFato) {
+        if (tiposRelacionados.has(evidencia.tipo) && Number.isInteger(evidencia.frame) && frames[evidencia.frame]) {
+          framesEncontrados.push(frames[evidencia.frame]);
+        }
+      }
+
+      setFramesDestacados(Array.from(new Set(framesEncontrados)));
+      setAvisoEvidencia(framesEncontrados.length === 0
+        ? `Sem evidência registrada para os critérios de ${protocolo.codigo}.`
+        : '');
+
+      window.setTimeout(() => {
+        document.querySelector('.evidence-row.highlighted')?.scrollIntoView({
+          block: 'center',
+        });
+      }, 0);
       return;
     }
 
@@ -1186,14 +1280,19 @@ function OcorrenciaDetalhePage({ id }) {
 
       <section className="evidence-layout">
         <div className="detail-main">
-          {evidencias.map((evidencia, index) => (
-            <EvidenceCard
-              key={`${evidencia.frame}-${index}`}
-              evidencia={evidencia}
-              highlighted={framesDestacados.includes(evidencia.frame)}
-              onOpenImage={setImagemAmpliada}
-              onProtocolClick={destacarProtocolo}
-            />
+          {gruposEvidencia.map((grupo) => (
+            <section className="evidence-group" key={grupo.tipo}>
+              <h2>{tipoEvidenciaLabels[grupo.tipo] || 'Evidências'} ({grupo.itens.length})</h2>
+              {grupo.itens.map((evidencia, index) => (
+                <EvidenceCard
+                  key={evidencia.id || `${evidencia.frame}-${index}`}
+                  evidencia={evidencia}
+                  highlighted={framesDestacados.includes(evidencia.frame)}
+                  onOpenImage={setImagemAmpliada}
+                  onProtocolClick={destacarProtocolo}
+                />
+              ))}
+            </section>
           ))}
 
           {avisoEvidencia ? <p className="alert alert-warning">{avisoEvidencia}</p> : null}

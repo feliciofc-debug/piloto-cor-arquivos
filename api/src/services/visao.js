@@ -43,16 +43,19 @@ const visionSchema = {
     confianca: { type: 'string', enum: ['alta', 'media', 'baixa'] },
     observacao: { type: 'string' },
     frame_evidencia: {
-      type: 'object',
-      additionalProperties: false,
-      properties: {
-        pessoa_na_pista: { type: 'integer', minimum: 0 },
-        pessoa_ao_solo: { type: 'integer', minimum: 0 },
-        fogo: { type: 'integer', minimum: 0 },
-        fumaca: { type: 'integer', minimum: 0 },
-        carga_derramada: { type: 'integer', minimum: 0 },
-        agua_na_pista: { type: 'integer', minimum: 0 },
-        veiculo_parado: { type: 'integer', minimum: 0 },
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['frame', 'tipo', 'descricao'],
+        properties: {
+          frame: { type: 'integer', minimum: 0 },
+          tipo: {
+            type: 'string',
+            enum: ['veiculo', 'pessoa', 'fogo', 'fumaca', 'agua', 'carga', 'outro'],
+          },
+          descricao: { type: 'string' },
+        },
       },
     },
   },
@@ -69,7 +72,11 @@ const prompt = [
   'Pessoa em calcada, passeio, canteiro ou area de seguranca nao conta como pessoa_na_pista.',
   'Na observacao, descreva a cena com detalhe: quantos veiculos, onde estao, quantas pessoas e o que fazem.',
   'Para frame_evidencia, use indice base 0 da lista de imagens enviada.',
-  'Inclua evidencias somente para fatos booleanos marcados como true.',
+  'frame_evidencia deve ser uma lista com um item para cada elemento relevante observado, nao um item por fato.',
+  'Se o mesmo elemento aparece em varios frames, escolha o frame em que ele esta mais nitido.',
+  'A descricao deve localizar o elemento na cena para o operador reconhecer qual e.',
+  'A quantidade de itens do tipo veiculo deve ser coerente com a contagem registrada em veiculos.',
+  'Para pessoa, a descricao deve dizer se esta na faixa de rolamento ou fora dela.',
   'Nao classifique gravidade, nao sugira acionamento, nao identifique pessoas, nao estime obito e nao leia placas.',
 ].join(' ');
 
@@ -131,44 +138,40 @@ async function frameToContentParts(amostra, indiceEnviado) {
 }
 
 function validarFrameEvidencia(fatos, amostras) {
-  const camposComEvidencia = [
-    'pessoa_na_pista',
-    'pessoa_ao_solo',
-    'fogo',
-    'fumaca',
-    'carga_derramada',
-    'agua_na_pista',
-    'veiculo_parado',
-  ];
+  const tiposPermitidos = new Set(['veiculo', 'pessoa', 'fogo', 'fumaca', 'agua', 'carga', 'outro']);
 
-  if (!fatos.frame_evidencia || typeof fatos.frame_evidencia !== 'object' || Array.isArray(fatos.frame_evidencia)) {
-    throw new Error('resposta de visao invalida: frame_evidencia obrigatorio');
+  if (!Array.isArray(fatos.frame_evidencia)) {
+    throw new Error('resposta de visao invalida: frame_evidencia deve ser lista');
   }
 
-  const camposPermitidos = new Set(camposComEvidencia);
-  const convertido = {};
-
-  for (const campo of Object.keys(fatos.frame_evidencia)) {
-    if (!camposPermitidos.has(campo)) {
-      throw new Error(`resposta de visao invalida: frame_evidencia.${campo}`);
+  const convertido = fatos.frame_evidencia.map((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new Error(`resposta de visao invalida: frame_evidencia[${index}]`);
     }
 
-    if (fatos[campo] !== true) {
-      throw new Error(`resposta de visao invalida: evidencia para fato falso ${campo}`);
+    if (!Number.isInteger(item.frame) || item.frame < 0 || item.frame >= amostras.length) {
+      throw new Error(`resposta de visao invalida: frame_evidencia[${index}].frame`);
     }
 
-    const indiceEnviado = fatos.frame_evidencia[campo];
-    if (!Number.isInteger(indiceEnviado) || indiceEnviado < 0 || indiceEnviado >= amostras.length) {
-      throw new Error(`resposta de visao invalida: indice de evidencia ${campo}`);
+    if (!tiposPermitidos.has(item.tipo)) {
+      throw new Error(`resposta de visao invalida: frame_evidencia[${index}].tipo`);
     }
 
-    convertido[campo] = amostras[indiceEnviado].indiceOriginal;
-  }
-
-  for (const campo of camposComEvidencia) {
-    if (fatos[campo] === true && !Object.hasOwn(convertido, campo)) {
-      throw new Error(`resposta de visao invalida: evidencia ausente para ${campo}`);
+    if (typeof item.descricao !== 'string' || !item.descricao.trim()) {
+      throw new Error(`resposta de visao invalida: frame_evidencia[${index}].descricao`);
     }
+
+    return {
+      frame: amostras[item.frame].indiceOriginal,
+      tipo: item.tipo,
+      descricao: item.descricao.trim(),
+    };
+  });
+
+  const totalVeiculos = Object.values(fatos.veiculos).reduce((total, valor) => total + valor, 0);
+  const evidenciasVeiculos = convertido.filter((item) => item.tipo === 'veiculo').length;
+  if (totalVeiculos !== evidenciasVeiculos) {
+    throw new Error('resposta de visao invalida: quantidade de evidencias de veiculos incoerente');
   }
 
   fatos.frame_evidencia = convertido;
