@@ -61,10 +61,16 @@ const visionSchema = {
 const prompt = [
   'Analise as imagens de uma cena de tunel.',
   'Preencha somente os campos do schema com fatos visuais observaveis.',
-  'Use contagens aproximadas quando necessario.',
-  'A observacao deve ser curta e descritiva.',
+  'Observe cuidadosamente toda a sequencia antes de responder.',
+  'Conte cada veiculo visivel ao longo de toda a sequencia, incluindo os que aparecem em apenas alguns quadros.',
+  'Considere veiculos estacionados e em movimento; se um veiculo aparece em apenas um quadro, ele conta.',
+  'Conte cada pessoa visivel, mesmo que apareca em poucos quadros.',
+  'pessoa_na_pista refere-se exclusivamente a pessoa na faixa de rolamento.',
+  'Pessoa em calcada, passeio, canteiro ou area de seguranca nao conta como pessoa_na_pista.',
+  'Na observacao, descreva a cena com detalhe: quantos veiculos, onde estao, quantas pessoas e o que fazem.',
   'Para frame_evidencia, use indice base 0 da lista de imagens enviada.',
   'Inclua evidencias somente para fatos booleanos marcados como true.',
+  'Nao classifique gravidade, nao sugira acionamento, nao identifique pessoas, nao estime obito e nao leia placas.',
 ].join(' ');
 
 function selecionarAmostraComIndices(frames, limite) {
