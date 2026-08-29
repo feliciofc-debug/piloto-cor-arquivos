@@ -49,6 +49,11 @@ const config = {
   visionApiPath: env('VISION_API_PATH', '/chat/completions'),
   visionTimeoutMs: Number(env('VISION_TIMEOUT_MS', '60000')),
   visionMaxFrames: Number(env('VISION_MAX_FRAMES', '10')),
+  whatsappPhoneNumberId: env('WHATSAPP_PHONE_NUMBER_ID'),
+  whatsappToken: env('WHATSAPP_TOKEN'),
+  whatsappDestino: env('WHATSAPP_DESTINO'),
+  whatsappAtivo: boolEnv('WHATSAPP_ATIVO', false),
+  whatsappTimeoutMs: Number(env('WHATSAPP_TIMEOUT_MS', '10000')),
 };
 
 function assertServerConfig() {
@@ -76,6 +81,16 @@ function assertServerConfig() {
 
   if (!Number.isInteger(config.visionMaxFrames) || config.visionMaxFrames <= 0) {
     throw new Error('VISION_MAX_FRAMES precisa ser um numero inteiro positivo.');
+  }
+
+  if (!Number.isInteger(config.whatsappTimeoutMs) || config.whatsappTimeoutMs <= 0) {
+    throw new Error('WHATSAPP_TIMEOUT_MS precisa ser um numero inteiro positivo.');
+  }
+
+  if (config.whatsappAtivo) {
+    required('WHATSAPP_PHONE_NUMBER_ID');
+    required('WHATSAPP_TOKEN');
+    required('WHATSAPP_DESTINO');
   }
 }
 

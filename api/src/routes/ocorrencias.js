@@ -6,6 +6,7 @@ const { randomUUID } = require('node:crypto');
 const { config } = require('../config');
 const { pool } = require('../db');
 const { resolveStoragePath } = require('../storage');
+const { notificarOcorrenciaDecidida } = require('../services/whatsapp');
 
 const extensoesPermitidas = new Set(['.mp4', '.mov', '.mkv', '.avi']);
 const extensoesImagemPermitidas = new Set(['.jpg', '.jpeg', '.png', '.webp']);
@@ -318,6 +319,14 @@ async function ocorrenciasRoutes(fastify) {
       }
 
       await client.query('commit');
+
+      if (decisao === 'aprovada' || decisao === 'ajustada') {
+        setImmediate(() => {
+          notificarOcorrenciaDecidida(id, fastify.log).catch((error) => {
+            fastify.log.error({ err: error, ocorrencia_id: id }, 'falha inesperada no fluxo de notificacao');
+          });
+        });
+      }
 
       return {
         ocorrencia: updateResult.rows[0],
