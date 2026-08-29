@@ -461,6 +461,12 @@ dd {
   gap: 14px;
 }
 
+.vehicle-state {
+  color: var(--text-strong);
+  font-weight: 800;
+  margin: 0;
+}
+
 .decision-section .decision-grid {
   align-items: start;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);

@@ -15,6 +15,8 @@ const visionSchema = {
     'carga_derramada',
     'agua_na_pista',
     'veiculo_parado',
+    'veiculos_parados',
+    'veiculos_em_movimento',
     'bloqueio_via',
     'confianca',
     'observacao',
@@ -39,6 +41,8 @@ const visionSchema = {
     carga_derramada: { type: 'boolean' },
     agua_na_pista: { type: 'boolean' },
     veiculo_parado: { type: 'boolean' },
+    veiculos_parados: { type: 'integer', minimum: 0 },
+    veiculos_em_movimento: { type: 'integer', minimum: 0 },
     bloqueio_via: { type: 'string', enum: ['nenhum', 'parcial', 'total'] },
     confianca: { type: 'string', enum: ['alta', 'media', 'baixa'] },
     observacao: { type: 'string' },
@@ -47,7 +51,7 @@ const visionSchema = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['frame', 'tipo', 'descricao'],
+        required: ['frame', 'tipo', 'descricao', 'estado'],
         properties: {
           frame: { type: 'integer', minimum: 0 },
           tipo: {
@@ -55,6 +59,12 @@ const visionSchema = {
             enum: ['veiculo', 'pessoa', 'fogo', 'fumaca', 'agua', 'carga', 'outro'],
           },
           descricao: { type: 'string' },
+          estado: {
+            anyOf: [
+              { type: 'string', enum: ['parado', 'em_movimento', 'indeterminado'] },
+              { type: 'null' },
+            ],
+          },
         },
       },
     },
@@ -66,7 +76,12 @@ const prompt = [
   'Preencha somente os campos do schema com fatos visuais observaveis.',
   'Observe cuidadosamente toda a sequencia antes de responder.',
   'Conte cada veiculo visivel ao longo de toda a sequencia, incluindo os que aparecem em apenas alguns quadros.',
-  'Considere veiculos estacionados e em movimento; se um veiculo aparece em apenas um quadro, ele conta.',
+  'Para cada veiculo observado, determine se esta parado ou em movimento comparando sua posicao entre os quadros.',
+  'Veiculo que muda de posicao entre quadros esta em movimento.',
+  'Veiculo que permanece na mesma posicao entre quadros esta parado.',
+  'Se nao for possivel determinar o movimento, use estado indeterminado.',
+  'Nao use parado nem em_movimento como padrao.',
+  'Se um veiculo aparece em apenas um quadro, ele conta e seu estado deve ser indeterminado.',
   'Conte cada pessoa visivel, mesmo que apareca em poucos quadros.',
   'pessoa_na_pista refere-se exclusivamente a pessoa na faixa de rolamento.',
   'Pessoa em calcada, passeio, canteiro ou area de seguranca nao conta como pessoa_na_pista.',
@@ -76,6 +91,9 @@ const prompt = [
   'Se o mesmo elemento aparece em varios frames, escolha o frame em que ele esta mais nitido.',
   'A descricao deve localizar o elemento na cena para o operador reconhecer qual e.',
   'A quantidade de itens do tipo veiculo deve ser coerente com a contagem registrada em veiculos.',
+  'Para item do tipo veiculo, estado e obrigatorio: parado, em_movimento ou indeterminado.',
+  'Para itens que nao sejam veiculo, estado deve ser null.',
+  'veiculo_parado deve ser true somente quando veiculos_parados for maior que zero.',
   'Para pessoa, a descricao deve dizer se esta na faixa de rolamento ou fora dela.',
   'Nao classifique gravidade, nao sugira acionamento, nao identifique pessoas, nao estime obito e nao leia placas.',
 ].join(' ');
@@ -139,6 +157,7 @@ async function frameToContentParts(amostra, indiceEnviado) {
 
 function validarFrameEvidencia(fatos, amostras) {
   const tiposPermitidos = new Set(['veiculo', 'pessoa', 'fogo', 'fumaca', 'agua', 'carga', 'outro']);
+  const estadosVeiculo = new Set(['parado', 'em_movimento', 'indeterminado']);
 
   if (!Array.isArray(fatos.frame_evidencia)) {
     throw new Error('resposta de visao invalida: frame_evidencia deve ser lista');
@@ -161,10 +180,19 @@ function validarFrameEvidencia(fatos, amostras) {
       throw new Error(`resposta de visao invalida: frame_evidencia[${index}].descricao`);
     }
 
+    if (item.tipo === 'veiculo') {
+      if (!estadosVeiculo.has(item.estado)) {
+        throw new Error(`resposta de visao invalida: frame_evidencia[${index}].estado`);
+      }
+    } else if (item.estado !== null) {
+      throw new Error(`resposta de visao invalida: estado deve ser null para ${item.tipo}`);
+    }
+
     return {
       frame: amostras[item.frame].indiceOriginal,
       tipo: item.tipo,
       descricao: item.descricao.trim(),
+      estado: item.estado,
     };
   });
 
@@ -172,6 +200,21 @@ function validarFrameEvidencia(fatos, amostras) {
   const evidenciasVeiculos = convertido.filter((item) => item.tipo === 'veiculo').length;
   if (totalVeiculos !== evidenciasVeiculos) {
     throw new Error('resposta de visao invalida: quantidade de evidencias de veiculos incoerente');
+  }
+
+  const veiculosParados = convertido.filter((item) => item.tipo === 'veiculo' && item.estado === 'parado').length;
+  const veiculosEmMovimento = convertido.filter((item) => item.tipo === 'veiculo' && item.estado === 'em_movimento').length;
+
+  if (fatos.veiculos_parados !== veiculosParados) {
+    throw new Error('resposta de visao invalida: veiculos_parados incoerente');
+  }
+
+  if (fatos.veiculos_em_movimento !== veiculosEmMovimento) {
+    throw new Error('resposta de visao invalida: veiculos_em_movimento incoerente');
+  }
+
+  if (fatos.veiculo_parado !== (fatos.veiculos_parados > 0)) {
+    throw new Error('resposta de visao invalida: veiculo_parado incoerente');
   }
 
   fatos.frame_evidencia = convertido;
@@ -213,6 +256,14 @@ function validarFatos(fatos, amostras = []) {
     if (typeof fatos[campo] !== 'boolean') {
       throw new Error(`resposta de visao invalida: ${campo}`);
     }
+  }
+
+  if (!Number.isInteger(fatos.veiculos_parados) || fatos.veiculos_parados < 0) {
+    throw new Error('resposta de visao invalida: veiculos_parados');
+  }
+
+  if (!Number.isInteger(fatos.veiculos_em_movimento) || fatos.veiculos_em_movimento < 0) {
+    throw new Error('resposta de visao invalida: veiculos_em_movimento');
   }
 
   if (!['nenhum', 'parcial', 'total'].includes(fatos.bloqueio_via)) {

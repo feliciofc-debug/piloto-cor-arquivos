@@ -31,6 +31,8 @@ const fatoLabels = {
   carga_derramada: 'Carga derramada',
   agua_na_pista: 'Água na pista',
   veiculo_parado: 'Veículo parado',
+  veiculos_parados: 'Veículos parados',
+  veiculos_em_movimento: 'Veículos em movimento',
   bloqueio_via: 'Bloqueio da via',
   confianca: 'Confiança',
   observacao: 'Observação',
@@ -68,6 +70,12 @@ const camposPorTipoEvidencia = {
   fumaca: ['fumaca'],
   agua: ['agua_na_pista'],
   carga: ['carga_derramada'],
+};
+
+const estadoVeiculoLabels = {
+  parado: 'parado',
+  em_movimento: 'em movimento',
+  indeterminado: 'indeterminado',
 };
 
 function navegar(path) {
@@ -405,6 +413,7 @@ function montarEvidencias(ocorrencia) {
         frame: frames[item.frame],
         tipo: item.tipo,
         descricao: item.descricao,
+        estado: item.estado,
         fatos: [],
         protocolos: protocolosPorTipo(ocorrencia.protocolos_casados, item.tipo),
         fallback: false,
@@ -1014,6 +1023,11 @@ function EvidenceCard({ evidencia, highlighted, onOpenImage, onProtocolClick }) 
           <p className="eyebrow">Evidência identificada pela análise</p>
           <h2>{tipoEvidenciaLabels[evidencia.tipo] || 'Evidência'}</h2>
           <p>{evidencia.descricao}</p>
+          {evidencia.tipo === 'veiculo' ? (
+            <p className="vehicle-state">
+              Estado: {estadoVeiculoLabels[evidencia.estado] || 'não informado'}
+            </p>
+          ) : null}
           {evidencia.fatos.length > 0 ? (
             <div className="compact-list">
               {evidencia.fatos.map((fato) => (
@@ -1282,7 +1296,14 @@ function OcorrenciaDetalhePage({ id }) {
         <div className="detail-main">
           {gruposEvidencia.map((grupo) => (
             <section className="evidence-group" key={grupo.tipo}>
-              <h2>{tipoEvidenciaLabels[grupo.tipo] || 'Evidências'} ({grupo.itens.length})</h2>
+              <h2>
+                {tipoEvidenciaLabels[grupo.tipo] || 'Evidências'} ({grupo.itens.length})
+                {grupo.tipo === 'veiculo' && ocorrencia.fatos ? (
+                  <span>
+                    {' '} - parados {ocorrencia.fatos.veiculos_parados ?? 0}, em movimento {ocorrencia.fatos.veiculos_em_movimento ?? 0}
+                  </span>
+                ) : null}
+              </h2>
               {grupo.itens.map((evidencia, index) => (
                 <EvidenceCard
                   key={evidencia.id || `${evidencia.frame}-${index}`}
