@@ -140,6 +140,48 @@ function formatarData(value) {
   }).format(new Date(value));
 }
 
+function formatarDataInput(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function periodoPadrao() {
+  const ate = new Date();
+  const de = new Date(ate.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  return {
+    de: formatarDataInput(de),
+    ate: formatarDataInput(ate),
+  };
+}
+
+function formatarSegundos(value) {
+  if (value === null || value === undefined) {
+    return 'Sem dados';
+  }
+
+  const total = Math.round(Number(value));
+  const minutos = Math.floor(total / 60);
+  const segundos = total % 60;
+
+  if (minutos <= 0) {
+    return `${segundos}s`;
+  }
+
+  return `${minutos}min ${segundos}s`;
+}
+
+function formatarPercentual(value) {
+  if (value === null || value === undefined) {
+    return 'Sem dados';
+  }
+
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'percent',
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(Number(value));
+}
+
 function formatarStatus(value) {
   const option = statusOptions.find((item) => item.value === value);
   return option ? option.label : value || 'Sem status';
@@ -318,6 +360,7 @@ function useSession() {
 
 function AppShell({ children }) {
   const { usuario, logout } = useSession();
+  const podeVerPainel = usuario?.papel === 'gestor' || usuario?.papel === 'admin';
 
   return (
     <div className="app-shell">
@@ -331,6 +374,11 @@ function AppShell({ children }) {
             <a href="/protocolos" onClick={(event) => { event.preventDefault(); navegar('/protocolos'); }}>
               Protocolos
             </a>
+            {podeVerPainel ? (
+              <a href="/painel" onClick={(event) => { event.preventDefault(); navegar('/painel'); }}>
+                Painel
+              </a>
+            ) : null}
           </nav>
           <span>{usuario?.nome || usuario?.email}</span>
           <button type="button" className="button button-ghost" onClick={logout}>
@@ -1147,6 +1195,174 @@ function ProtocolosPage() {
   );
 }
 
+function MetricCard({ title, children }) {
+  return (
+    <article className="card metric-card">
+      <h2>{title}</h2>
+      {children}
+    </article>
+  );
+}
+
+function PainelPage() {
+  const { usuario } = useSession();
+  const inicial = useMemo(() => periodoPadrao(), []);
+  const [de, setDe] = useState(inicial.de);
+  const [ate, setAte] = useState(inicial.ate);
+  const [metricas, setMetricas] = useState(null);
+  const [erro, setErro] = useState('');
+  const [carregando, setCarregando] = useState(true);
+  const autorizado = usuario?.papel === 'gestor' || usuario?.papel === 'admin';
+
+  const carregar = useCallback(async () => {
+    if (!autorizado) {
+      setCarregando(false);
+      return;
+    }
+
+    const params = new URLSearchParams();
+    if (de) {
+      params.set('de', de);
+    }
+    if (ate) {
+      params.set('ate', ate);
+    }
+
+    try {
+      const data = await api(`/api/metricas?${params.toString()}`);
+      setMetricas(data);
+      setErro('');
+    } catch (error) {
+      setErro(error.message);
+    } finally {
+      setCarregando(false);
+    }
+  }, [autorizado, de, ate]);
+
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect
+    carregar();
+  }, [carregar]);
+
+  if (!autorizado) {
+    return (
+      <AppShell>
+        <section className="card">
+          <h1>Acesso restrito</h1>
+          <p>O painel de métricas é visível apenas para gestor e admin.</p>
+        </section>
+      </AppShell>
+    );
+  }
+
+  const ocorrencias = metricas?.ocorrencias_detectadas;
+  const taxaDescarte = metricas?.taxa_descarte;
+  const acertoMotor = metricas?.acerto_motor_protocolos;
+
+  return (
+    <AppShell>
+      <section className="page-heading">
+        <p className="eyebrow">Avaliação do piloto</p>
+        <h1>Painel</h1>
+        <p>Indicadores acordados para avaliação do piloto pelo Centro de Operações e Resiliência.</p>
+      </section>
+
+      <section className="filters card">
+        <label>
+          De
+          <input type="date" value={de} onChange={(event) => setDe(event.target.value)} />
+        </label>
+        <label>
+          Até
+          <input type="date" value={ate} onChange={(event) => setAte(event.target.value)} />
+        </label>
+        <button type="button" className="button button-secondary" onClick={carregar}>
+          Atualizar
+        </button>
+      </section>
+
+      {erro ? <p className="alert alert-error">{erro}</p> : null}
+      {carregando ? <p className="loading">Carregando métricas...</p> : null}
+
+      {metricas ? (
+        <section className="metrics-grid">
+          <MetricCard title="Tempo entre detecção e decisão">
+            <div className="metric-numbers two">
+              <div>
+                <strong>{formatarSegundos(metricas.tempo_decisao.media_segundos)}</strong>
+                <span>Média</span>
+              </div>
+              <div>
+                <strong>{formatarSegundos(metricas.tempo_decisao.mediana_segundos)}</strong>
+                <span>Mediana</span>
+              </div>
+            </div>
+            <p className="muted">{metricas.tempo_decisao.total_decididas} ocorrência(s) decidida(s).</p>
+          </MetricCard>
+
+          <MetricCard title="Ocorrências detectadas pelo sistema">
+            <strong className="metric-big">{ocorrencias.total}</strong>
+            <dl className="metric-list">
+              <div>
+                <dt>Aguardando decisão</dt>
+                <dd>{ocorrencias.por_status.aguardando_decisao}</dd>
+              </div>
+              <div>
+                <dt>Aprovadas</dt>
+                <dd>{ocorrencias.por_status.aprovadas}</dd>
+              </div>
+              <div>
+                <dt>Descartadas</dt>
+                <dd>{ocorrencias.por_status.descartadas}</dd>
+              </div>
+            </dl>
+          </MetricCard>
+
+          <MetricCard title="Taxa de descarte pelo operador">
+            <strong className="metric-big">{formatarPercentual(taxaDescarte.valor)}</strong>
+            <p className="muted">
+              {taxaDescarte.descartadas} descarte(s) em {taxaDescarte.total_decididas} decisão(ões).
+            </p>
+          </MetricCard>
+
+          <MetricCard title="Acerto do motor de protocolos">
+            <strong className="metric-big">{formatarPercentual(acertoMotor.valor)}</strong>
+            <p className="muted">
+              {acertoMotor.aprovadas_sem_ajuste} aprovada(s) sem ajuste em {acertoMotor.total_avaliadas} avaliação(ões).
+            </p>
+          </MetricCard>
+
+          <MetricCard title="Protocolos mais acionados">
+            <ol className="rank-list">
+              {metricas.protocolos_mais_acionados.map((item) => (
+                <li key={item.codigo}>
+                  <span>{item.codigo} - {item.nome}</span>
+                  <strong>{item.quantidade}</strong>
+                </li>
+              ))}
+            </ol>
+            {metricas.protocolos_mais_acionados.length === 0 ? <p className="muted">Sem dados no período.</p> : null}
+          </MetricCard>
+
+          <MetricCard title="Protocolos mais ajustados">
+            <div className="adjustment-list">
+              {metricas.protocolos_mais_ajustados.map((item, index) => (
+                <div key={`${item.sugerido_codigo}-${item.escolhido_codigo}-${index}`}>
+                  <strong>{item.quantidade} ajuste(s)</strong>
+                  <span>Sugerido: {item.sugerido_codigo} - {item.sugerido_nome}</span>
+                  <span>Escolhido: {item.escolhido_codigo || 'Sem protocolo'} - {item.escolhido_nome || 'Não informado'}</span>
+                  <span>Escolhido fora dos casados: {item.escolhido_fora_dos_casados}</span>
+                </div>
+              ))}
+            </div>
+            {metricas.protocolos_mais_ajustados.length === 0 ? <p className="muted">Sem ajustes no período.</p> : null}
+          </MetricCard>
+        </section>
+      ) : null}
+    </AppShell>
+  );
+}
+
 function Router() {
   const { usuario, carregando } = useSession();
   const [path, setPath] = useState(window.location.pathname);
@@ -1177,6 +1393,10 @@ function Router() {
 
   if (path === '/protocolos') {
     return <ProtocolosPage />;
+  }
+
+  if (path === '/painel') {
+    return <PainelPage />;
   }
 
   const detalheMatch = path.match(/^\/ocorrencias\/([^/]+)$/);

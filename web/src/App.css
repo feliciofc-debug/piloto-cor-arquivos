@@ -490,6 +490,89 @@ dd {
   gap: 18px;
 }
 
+.metrics-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.metric-card {
+  display: grid;
+  gap: 18px;
+}
+
+.metric-card h2 {
+  font-size: 1.05rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.metric-big,
+.metric-numbers strong {
+  color: var(--cor-blue);
+  display: block;
+  font-size: clamp(2.6rem, 6vw, 5rem);
+  line-height: 1;
+}
+
+.metric-numbers {
+  display: grid;
+  gap: 18px;
+}
+
+.metric-numbers.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.metric-numbers span {
+  color: var(--muted);
+  display: block;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  margin-top: 8px;
+  text-transform: uppercase;
+}
+
+.metric-list,
+.rank-list,
+.adjustment-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+}
+
+.metric-list div,
+.rank-list li,
+.adjustment-list div {
+  align-items: center;
+  background: #f6f9fc;
+  border-radius: 14px;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+}
+
+.rank-list {
+  list-style: none;
+}
+
+.rank-list li {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.rank-list strong,
+.adjustment-list strong {
+  color: var(--cor-blue);
+  font-size: 1.3rem;
+}
+
+.adjustment-list span {
+  color: var(--text-strong);
+  display: block;
+  font-weight: 700;
+}
+
 .protocol-row {
   display: grid;
   gap: 18px;
@@ -604,6 +687,8 @@ dd {
   .filters,
   .card-link,
   .frame-navigation,
+  .metric-numbers.two,
+  .metrics-grid,
   .protocol-row-header,
   .upload-card,
   .detail-layout {

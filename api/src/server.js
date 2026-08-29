@@ -5,6 +5,7 @@ const { closePool } = require('./db');
 const authPlugin = require('./plugins/auth');
 const authRoutes = require('./routes/auth');
 const healthRoutes = require('./routes/health');
+const metricasRoutes = require('./routes/metricas');
 const ocorrenciasRoutes = require('./routes/ocorrencias');
 const protocolosRoutes = require('./routes/protocolos');
 const workerRoutes = require('./routes/worker');
@@ -34,6 +35,7 @@ async function buildServer() {
   });
   await fastify.register(healthRoutes, { prefix: '/api' });
   await fastify.register(authRoutes, { prefix: '/api' });
+  await fastify.register(metricasRoutes, { prefix: '/api' });
   await fastify.register(ocorrenciasRoutes, { prefix: '/api' });
   await fastify.register(protocolosRoutes, { prefix: '/api' });
   await fastify.register(workerRoutes);
