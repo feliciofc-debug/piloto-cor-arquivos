@@ -561,7 +561,7 @@ async function ocorrenciasRoutes(fastify) {
           destinoRelativo,
           JSON.stringify({
             fps: 1,
-            max_frames: 30,
+            max_frames: 40,
             largura: 768,
           }),
         ],

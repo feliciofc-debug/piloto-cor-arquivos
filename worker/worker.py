@@ -90,9 +90,9 @@ def extract_frames(job):
         raise FileNotFoundError(f"arquivo de origem nao encontrado: {job['origem']}")
 
     duration = video_duration_seconds(origem)
-    fps = 0.5 if duration > 20 else float(parametros.get("fps", 1))
+    fps = float(parametros.get("fps", 1))
     largura = int(parametros.get("largura", 768))
-    max_frames = int(parametros.get("max_frames", 30))
+    max_frames = int(parametros.get("max_frames", 40))
 
     if tmp_destino.exists():
         shutil.rmtree(tmp_destino)

@@ -48,7 +48,7 @@ const config = {
   visionApiBaseUrl: env('VISION_API_BASE_URL', 'https://ai.gateway.lovable.dev/v1').replace(/\/$/, ''),
   visionApiPath: env('VISION_API_PATH', '/chat/completions'),
   visionTimeoutMs: Number(env('VISION_TIMEOUT_MS', '60000')),
-  visionMaxFrames: Number(env('VISION_MAX_FRAMES', '20')),
+  visionMaxFrames: Number(env('VISION_MAX_FRAMES', '40')),
   whatsappPhoneNumberId: env('WHATSAPP_PHONE_NUMBER_ID'),
   whatsappToken: env('WHATSAPP_TOKEN'),
   whatsappDestino: env('WHATSAPP_DESTINO'),
