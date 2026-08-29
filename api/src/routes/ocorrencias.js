@@ -18,7 +18,7 @@ const statusPermitidos = new Set([
   'descartada',
   'expirada',
 ]);
-const decisoesPermitidas = new Set(['aprovada', 'descartada', 'ajustada']);
+const decisoesPermitidas = new Set(['aprovada', 'descartada']);
 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function relativeToStorage(...segments) {
@@ -74,6 +74,74 @@ function contentTypeImagem(relativePath) {
     default:
       return 'application/octet-stream';
   }
+}
+
+function normalizarOrgao(orgao) {
+  return orgao.trim().replace(/\s+/g, ' ');
+}
+
+function chaveAcionamento(acionamento) {
+  return `${acionamento.orgao.toLocaleLowerCase('pt-BR')}|${acionamento.prioridade}`;
+}
+
+function normalizarAcionamentos(acionamentos) {
+  if (!Array.isArray(acionamentos)) {
+    return [];
+  }
+
+  const porOrgao = new Map();
+
+  for (const acionamento of acionamentos) {
+    const orgao = typeof acionamento?.orgao === 'string' ? normalizarOrgao(acionamento.orgao) : '';
+    const prioridade = Number(acionamento?.prioridade);
+
+    if (!orgao || !Number.isInteger(prioridade) || prioridade <= 0) {
+      throw new Error('Acionamento invalido.');
+    }
+
+    const chave = orgao.toLocaleLowerCase('pt-BR');
+    const atual = porOrgao.get(chave);
+    if (!atual || prioridade < atual.prioridade) {
+      porOrgao.set(chave, { orgao, prioridade });
+    }
+  }
+
+  return Array.from(porOrgao.values())
+    .sort((a, b) => a.orgao.localeCompare(b.orgao, 'pt-BR'));
+}
+
+function acionamentosSugeridos(protocolosCasados) {
+  const acionamentos = [];
+
+  for (const protocolo of Array.isArray(protocolosCasados) ? protocolosCasados : []) {
+    if (protocolo?.acionamentos_suprimidos) {
+      continue;
+    }
+
+    const lista = Array.isArray(protocolo?.acionamentos_sugeridos)
+      ? protocolo.acionamentos_sugeridos
+      : protocolo?.acionamentos;
+
+    if (Array.isArray(lista)) {
+      acionamentos.push(...lista);
+    }
+  }
+
+  return normalizarAcionamentos(acionamentos);
+}
+
+function acionamentosIguais(sugeridos, definidos) {
+  // Divergencia e qualquer diferenca no conjunto de pares orgao+prioridade.
+  // A ordem e ignorada. Orgao removido, acrescentado ou com prioridade
+  // alterada conta como divergencia.
+  const chavesSugeridas = sugeridos.map(chaveAcionamento).sort();
+  const chavesDefinidas = definidos.map(chaveAcionamento).sort();
+
+  if (chavesSugeridas.length !== chavesDefinidas.length) {
+    return false;
+  }
+
+  return chavesSugeridas.every((chave, index) => chave === chavesDefinidas[index]);
 }
 
 async function ocorrenciasRoutes(fastify) {
@@ -164,6 +232,8 @@ async function ocorrenciasRoutes(fastify) {
          o.operador_id,
          o.decisao,
          o.decisao_obs,
+         o.acionamentos_definidos,
+         o.orientacao_campo,
          o.detectada_em,
          o.decidida_em,
          o.created_at,
@@ -221,7 +291,9 @@ async function ocorrenciasRoutes(fastify) {
     const body = request.body || {};
     const decisao = textoOuNulo(body.decisao);
     const decisaoObs = textoOuNulo(body.decisao_obs);
-    const protocoloEscolhidoId = textoOuNulo(body.protocolo_escolhido_id);
+    const orientacaoCampo = textoOuNulo(body.orientacao_campo);
+    const recebeuAcionamentos = Object.hasOwn(body, 'acionamentos_definidos');
+    let acionamentosInformados = null;
 
     if (!uuidRegex.test(id)) {
       return reply.code(400).send({ error: 'Id de ocorrencia invalido.' });
@@ -235,12 +307,12 @@ async function ocorrenciasRoutes(fastify) {
       return reply.code(400).send({ error: 'Motivo obrigatorio para descarte.' });
     }
 
-    if (decisao === 'ajustada' && !protocoloEscolhidoId) {
-      return reply.code(400).send({ error: 'Protocolo obrigatorio para ajuste.' });
-    }
-
-    if (protocoloEscolhidoId && !uuidRegex.test(protocoloEscolhidoId)) {
-      return reply.code(400).send({ error: 'Id de protocolo invalido.' });
+    if (recebeuAcionamentos) {
+      try {
+        acionamentosInformados = normalizarAcionamentos(body.acionamentos_definidos);
+      } catch {
+        return reply.code(400).send({ error: 'Acionamentos definidos invalidos.' });
+      }
     }
 
     const client = await pool.connect();
@@ -248,25 +320,45 @@ async function ocorrenciasRoutes(fastify) {
     try {
       await client.query('begin');
 
-      if (decisao === 'ajustada') {
-        const protocoloResult = await client.query(
-          `select id
-           from protocolos
-           where id = $1
-             and ativo = true
-           limit 1`,
-          [protocoloEscolhidoId],
-        );
+      const ocorrenciaAtualResult = await client.query(
+        `select id, status, protocolos_casados
+         from ocorrencias
+         where id = $1
+         for update`,
+        [id],
+      );
 
-        if (protocoloResult.rowCount === 0) {
-          await client.query('rollback');
-          return reply.code(400).send({ error: 'Protocolo ativo nao encontrado para ajuste.' });
-        }
+      const ocorrenciaAtual = ocorrenciaAtualResult.rows[0];
+      if (!ocorrenciaAtual) {
+        await client.query('rollback');
+        return reply.code(404).send({ error: 'Ocorrencia nao encontrada.' });
       }
 
-      // O status nao tem valor "ajustada"; a metrica de acerto do motor usa
-      // ocorrencias.decisao. Nao simplificar ajuste para decisao = 'aprovada'.
+      if (ocorrenciaAtual.status !== 'aguardando_operador') {
+        await client.query('rollback');
+        return reply.code(409).send({
+          error: 'Ocorrencia nao esta aguardando decisao do operador.',
+          status: ocorrenciaAtual.status,
+        });
+      }
+
+      let decisaoFinal = decisao;
       const statusFinal = decisao === 'descartada' ? 'descartada' : 'aprovada';
+      let acionamentosDefinidos = [];
+
+      if (decisao === 'aprovada') {
+        const sugeridos = acionamentosSugeridos(ocorrenciaAtual.protocolos_casados);
+        acionamentosDefinidos = recebeuAcionamentos ? acionamentosInformados : sugeridos;
+
+        if (acionamentosDefinidos.length === 0) {
+          await client.query('rollback');
+          return reply.code(400).send({ error: 'Informe ao menos um acionamento para aprovar.' });
+        }
+
+        decisaoFinal = acionamentosIguais(sugeridos, acionamentosDefinidos)
+          ? 'aprovada'
+          : 'ajustada';
+      }
 
       const updateResult = await client.query(
         `update ocorrencias
@@ -275,52 +367,35 @@ async function ocorrenciasRoutes(fastify) {
            operador_id = $3,
            decisao = $4,
            decisao_obs = $5,
-           protocolo_escolhido_id = $6,
+           protocolo_escolhido_id = null,
+           acionamentos_definidos = $6::jsonb,
+           orientacao_campo = $7,
            decidida_em = now()
          where id = $1
-           and status = 'aguardando_operador'
          returning
            id,
            status,
            decisao,
            decisao_obs,
            protocolo_escolhido_id,
+           acionamentos_definidos,
+           orientacao_campo,
            operador_id,
            decidida_em`,
         [
           id,
           statusFinal,
           request.usuario.id,
-          decisao,
+          decisaoFinal,
           decisaoObs,
-          decisao === 'ajustada' ? protocoloEscolhidoId : null,
+          JSON.stringify(acionamentosDefinidos),
+          orientacaoCampo,
         ],
       );
 
-      if (updateResult.rowCount === 0) {
-        const ocorrenciaResult = await client.query(
-          `select status
-           from ocorrencias
-           where id = $1
-           limit 1`,
-          [id],
-        );
-
-        await client.query('rollback');
-
-        if (ocorrenciaResult.rowCount === 0) {
-          return reply.code(404).send({ error: 'Ocorrencia nao encontrada.' });
-        }
-
-        return reply.code(409).send({
-          error: 'Ocorrencia nao esta aguardando decisao do operador.',
-          status: ocorrenciaResult.rows[0].status,
-        });
-      }
-
       await client.query('commit');
 
-      if (decisao === 'aprovada' || decisao === 'ajustada') {
+      if (decisaoFinal === 'aprovada' || decisaoFinal === 'ajustada') {
         setImmediate(() => {
           notificarOcorrenciaDecidida(id, fastify.log).catch((error) => {
             fastify.log.error({ err: error, ocorrencia_id: id }, 'falha inesperada no fluxo de notificacao');

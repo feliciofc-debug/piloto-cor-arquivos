@@ -18,6 +18,7 @@ const visionSchema = {
     'bloqueio_via',
     'confianca',
     'observacao',
+    'frame_evidencia',
   ],
   properties: {
     veiculos: {
@@ -41,6 +42,19 @@ const visionSchema = {
     bloqueio_via: { type: 'string', enum: ['nenhum', 'parcial', 'total'] },
     confianca: { type: 'string', enum: ['alta', 'media', 'baixa'] },
     observacao: { type: 'string' },
+    frame_evidencia: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        pessoa_na_pista: { type: 'integer', minimum: 0 },
+        pessoa_ao_solo: { type: 'integer', minimum: 0 },
+        fogo: { type: 'integer', minimum: 0 },
+        fumaca: { type: 'integer', minimum: 0 },
+        carga_derramada: { type: 'integer', minimum: 0 },
+        agua_na_pista: { type: 'integer', minimum: 0 },
+        veiculo_parado: { type: 'integer', minimum: 0 },
+      },
+    },
   },
 };
 
@@ -49,11 +63,13 @@ const prompt = [
   'Preencha somente os campos do schema com fatos visuais observaveis.',
   'Use contagens aproximadas quando necessario.',
   'A observacao deve ser curta e descritiva.',
+  'Para frame_evidencia, use indice base 0 da lista de imagens enviada.',
+  'Inclua evidencias somente para fatos booleanos marcados como true.',
 ].join(' ');
 
-function selecionarAmostra(frames, limite) {
+function selecionarAmostraComIndices(frames, limite) {
   if (frames.length <= limite) {
-    return frames;
+    return frames.map((frame, indiceOriginal) => ({ frame, indiceOriginal }));
   }
 
   const selecionados = [];
@@ -61,10 +77,17 @@ function selecionarAmostra(frames, limite) {
 
   for (let index = 0; index < limite; index += 1) {
     const posicao = Math.round((index * ultimo) / (limite - 1));
-    selecionados.push(frames[posicao]);
+    selecionados.push({
+      frame: frames[posicao],
+      indiceOriginal: posicao,
+    });
   }
 
   return selecionados;
+}
+
+function selecionarAmostra(frames, limite) {
+  return selecionarAmostraComIndices(frames, limite).map((item) => item.frame);
 }
 
 function mimeTypeFor(framePath) {
@@ -91,7 +114,61 @@ async function frameToImageContent(framePath) {
   };
 }
 
-function validarFatos(fatos) {
+async function frameToContentParts(amostra, indiceEnviado) {
+  return [
+    {
+      type: 'text',
+      text: `Frame enviado indice ${indiceEnviado}`,
+    },
+    await frameToImageContent(amostra.frame),
+  ];
+}
+
+function validarFrameEvidencia(fatos, amostras) {
+  const camposComEvidencia = [
+    'pessoa_na_pista',
+    'pessoa_ao_solo',
+    'fogo',
+    'fumaca',
+    'carga_derramada',
+    'agua_na_pista',
+    'veiculo_parado',
+  ];
+
+  if (!fatos.frame_evidencia || typeof fatos.frame_evidencia !== 'object' || Array.isArray(fatos.frame_evidencia)) {
+    throw new Error('resposta de visao invalida: frame_evidencia obrigatorio');
+  }
+
+  const camposPermitidos = new Set(camposComEvidencia);
+  const convertido = {};
+
+  for (const campo of Object.keys(fatos.frame_evidencia)) {
+    if (!camposPermitidos.has(campo)) {
+      throw new Error(`resposta de visao invalida: frame_evidencia.${campo}`);
+    }
+
+    if (fatos[campo] !== true) {
+      throw new Error(`resposta de visao invalida: evidencia para fato falso ${campo}`);
+    }
+
+    const indiceEnviado = fatos.frame_evidencia[campo];
+    if (!Number.isInteger(indiceEnviado) || indiceEnviado < 0 || indiceEnviado >= amostras.length) {
+      throw new Error(`resposta de visao invalida: indice de evidencia ${campo}`);
+    }
+
+    convertido[campo] = amostras[indiceEnviado].indiceOriginal;
+  }
+
+  for (const campo of camposComEvidencia) {
+    if (fatos[campo] === true && !Object.hasOwn(convertido, campo)) {
+      throw new Error(`resposta de visao invalida: evidencia ausente para ${campo}`);
+    }
+  }
+
+  fatos.frame_evidencia = convertido;
+}
+
+function validarFatos(fatos, amostras = []) {
   const camposBooleanos = [
     'pessoa_na_pista',
     'pessoa_ao_solo',
@@ -140,6 +217,8 @@ function validarFatos(fatos) {
   if (typeof fatos.observacao !== 'string') {
     throw new Error('resposta de visao invalida: observacao');
   }
+
+  validarFrameEvidencia(fatos, amostras);
 
   return fatos;
 }
@@ -227,8 +306,9 @@ async function analisarFrames({ frames }) {
   }
 
   const inicio = Date.now();
-  const selecionados = selecionarAmostra(frames, config.visionMaxFrames);
-  const imagens = await Promise.all(selecionados.map(frameToImageContent));
+  const selecionados = selecionarAmostraComIndices(frames, config.visionMaxFrames);
+  const partesPorFrame = await Promise.all(selecionados.map(frameToContentParts));
+  const imagens = partesPorFrame.flat();
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.visionTimeoutMs);
@@ -246,14 +326,14 @@ async function analisarFrames({ frames }) {
     }
 
     return {
-      fatos: validarFatos(fatos),
+      fatos: validarFatos(fatos, selecionados),
       provider: config.visionProvider,
       model: config.visionModel,
       duracao_ms: Date.now() - inicio,
-      frames_enviados: imagens.length,
+      frames_enviados: selecionados.length,
     };
   } catch (error) {
-    error.frames_enviados = imagens.length;
+    error.frames_enviados = selecionados.length;
     error.duracao_ms = Date.now() - inicio;
     throw error;
   } finally {
@@ -265,5 +345,6 @@ module.exports = {
   analisarFrames,
   authHeadersPorProvedor,
   selecionarAmostra,
+  selecionarAmostraComIndices,
   visionSchema,
 };

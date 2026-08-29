@@ -248,7 +248,7 @@ function listaFatos(fatos) {
     : [];
 
   const demais = Object.entries(fatos)
-    .filter(([key]) => key !== 'veiculos')
+    .filter(([key]) => key !== 'veiculos' && key !== 'frame_evidencia')
     .map(([key, value]) => ({
       label: fatoLabels[key] || key.replaceAll('_', ' '),
       value,
@@ -286,6 +286,113 @@ function normalizarFrames(frames, framePrincipal) {
   ].filter(Boolean);
 
   return Array.from(new Set(ordenados));
+}
+
+function normalizarAcionamentosUi(acionamentos) {
+  const porOrgao = new Map();
+
+  for (const acionamento of Array.isArray(acionamentos) ? acionamentos : []) {
+    const orgao = typeof acionamento?.orgao === 'string' ? acionamento.orgao.trim().replace(/\s+/g, ' ') : '';
+    const prioridade = Number(acionamento?.prioridade);
+
+    if (!orgao || !Number.isInteger(prioridade) || prioridade <= 0) {
+      continue;
+    }
+
+    const chave = orgao.toLocaleLowerCase('pt-BR');
+    const atual = porOrgao.get(chave);
+    if (!atual || prioridade < atual.prioridade) {
+      porOrgao.set(chave, { orgao, prioridade, ativo: true });
+    }
+  }
+
+  return Array.from(porOrgao.values()).sort((a, b) => a.orgao.localeCompare(b.orgao, 'pt-BR'));
+}
+
+function acionamentosSugeridosUi(protocolos) {
+  const acionamentos = [];
+
+  for (const protocolo of Array.isArray(protocolos) ? protocolos : []) {
+    if (protocolo?.acionamentos_suprimidos) {
+      continue;
+    }
+
+    const lista = Array.isArray(protocolo?.acionamentos_sugeridos)
+      ? protocolo.acionamentos_sugeridos
+      : protocolo?.acionamentos;
+
+    if (Array.isArray(lista)) {
+      acionamentos.push(...lista);
+    }
+  }
+
+  return normalizarAcionamentosUi(acionamentos);
+}
+
+function criterioUsaFato(criterios, fato) {
+  if (!criterios || typeof criterios !== 'object') {
+    return false;
+  }
+
+  return ['todos', 'algum', 'nenhum'].some((grupo) => (
+    Array.isArray(criterios[grupo])
+    && criterios[grupo].some((condicao) => condicao?.campo === fato)
+  ));
+}
+
+function protocolosPorFatos(protocolos, fatos) {
+  const relacionados = (Array.isArray(protocolos) ? protocolos : []).filter((protocolo) => (
+    fatos.some((fato) => criterioUsaFato(protocolo.criterios, fato))
+  ));
+
+  return relacionados.length > 0 ? relacionados : (Array.isArray(protocolos) ? protocolos : []);
+}
+
+function montarEvidencias(ocorrencia) {
+  const frames = normalizarFrames(ocorrencia.frames, ocorrencia.frame_principal);
+  const evidencias = ocorrencia.fatos?.frame_evidencia;
+
+  if (!evidencias || typeof evidencias !== 'object' || Array.isArray(evidencias)) {
+    return [{
+      frame: ocorrencia.frame_principal || frames[0] || '',
+      fatos: [],
+      protocolos: Array.isArray(ocorrencia.protocolos_casados) ? ocorrencia.protocolos_casados : [],
+      fallback: true,
+    }];
+  }
+
+  const porFrame = new Map();
+
+  for (const [fato, indice] of Object.entries(evidencias)) {
+    if (!Number.isInteger(indice) || !frames[indice]) {
+      continue;
+    }
+
+    const atual = porFrame.get(indice) || {
+      frame: frames[indice],
+      fatos: [],
+    };
+
+    atual.fatos.push(fato);
+    porFrame.set(indice, atual);
+  }
+
+  const lista = Array.from(porFrame.values()).map((evidencia) => ({
+    ...evidencia,
+    protocolos: protocolosPorFatos(ocorrencia.protocolos_casados, evidencia.fatos),
+    fallback: false,
+  }));
+
+  if (lista.length === 0) {
+    return [{
+      frame: ocorrencia.frame_principal || frames[0] || '',
+      fatos: [],
+      protocolos: Array.isArray(ocorrencia.protocolos_casados) ? ocorrencia.protocolos_casados : [],
+      fallback: true,
+    }];
+  }
+
+  return lista;
 }
 
 function BrandHeader({ compact = false }) {
@@ -642,51 +749,22 @@ function OcorrenciasPage() {
   );
 }
 
-function ProtocolosCasados({ protocolos }) {
-  const lista = Array.isArray(protocolos) ? protocolos : [];
-
-  if (lista.length === 0) {
-    return <p className="muted">Nenhum protocolo aplicável segundo a regra.</p>;
-  }
-
-  return (
-    <div className="protocol-stack">
-      {lista.map((protocolo) => {
-        const acionamentos = protocolo.acionamentos_sugeridos || protocolo.acionamentos || [];
-        return (
-          <article className="protocol-card" key={protocolo.protocolo_id || protocolo.codigo}>
-            <div className="card-title-row">
-              <h3>{protocolo.codigo} - {protocolo.nome}</h3>
-              <span>Prioridade {protocolo.prioridade}</span>
-            </div>
-            <p>Protocolo aplicável segundo a regra.</p>
-            {protocolo.acionamentos_suprimidos ? (
-              <p className="alert alert-warning">
-                Leitura com confiança baixa. Nenhum acionamento é sugerido.
-              </p>
-            ) : (
-              <ul className="action-list">
-                {acionamentos.map((acionamento, index) => (
-                  <li key={`${protocolo.codigo}-${index}`}>
-                    {acionamento.orgao} - prioridade {acionamento.prioridade}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </article>
-        );
-      })}
-    </div>
-  );
-}
-
-function DecisionPanel({ detalhe, onDecidido }) {
+function DecisionPanel({
+  detalhe,
+  onDecidido,
+  acionamentos,
+  setAcionamentos,
+  orientacao,
+  setOrientacao,
+}) {
   const [motivo, setMotivo] = useState('');
-  const [protocoloId, setProtocoloId] = useState('');
+  const [novoOrgao, setNovoOrgao] = useState('');
+  const [novaPrioridade, setNovaPrioridade] = useState('1');
   const [erro, setErro] = useState('');
   const [mensagem, setMensagem] = useState('');
   const [enviando, setEnviando] = useState('');
   const aguardando = detalhe.ocorrencia.status === 'aguardando_operador';
+  const acionamentosAtivos = acionamentos.filter((acionamento) => acionamento.ativo);
 
   async function decidir(decisao, body = {}) {
     setErro('');
@@ -707,8 +785,36 @@ function DecisionPanel({ detalhe, onDecidido }) {
     }
   }
 
+  function alternarAcionamento(index) {
+    setAcionamentos((atuais) => atuais.map((acionamento, itemIndex) => (
+      itemIndex === index ? { ...acionamento, ativo: !acionamento.ativo } : acionamento
+    )));
+  }
+
+  function alterarPrioridade(index, prioridade) {
+    setAcionamentos((atuais) => atuais.map((acionamento, itemIndex) => (
+      itemIndex === index ? { ...acionamento, prioridade: Number(prioridade) } : acionamento
+    )));
+  }
+
+  function adicionarAcionamento() {
+    const orgao = novoOrgao.trim();
+    const prioridade = Number(novaPrioridade);
+
+    if (!orgao || !Number.isInteger(prioridade) || prioridade <= 0) {
+      return;
+    }
+
+    setAcionamentos((atuais) => normalizarAcionamentosUi([
+      ...atuais.filter((acionamento) => acionamento.ativo),
+      { orgao, prioridade },
+    ]));
+    setNovoOrgao('');
+    setNovaPrioridade('1');
+  }
+
   return (
-    <section className="card decision-card">
+    <section className="decision-card inline-decision">
       <p className="eyebrow">Decisão humana</p>
       <h2>Ações do operador</h2>
       {!aguardando ? (
@@ -717,43 +823,70 @@ function DecisionPanel({ detalhe, onDecidido }) {
       {erro ? <p className="alert alert-error">{erro}</p> : null}
       {mensagem ? <p className="alert alert-success">{mensagem}</p> : null}
       <div className="decision-grid">
-        <div>
-          <h3>Aprovar</h3>
-          <p>Confirma o protocolo aplicável segundo a regra.</p>
+        <div className="action-editor">
+          <h3>Acionamentos definidos</h3>
+          <p>Altere os órgãos e prioridades antes de aprovar. A regra original fica preservada.</p>
+          {acionamentos.map((acionamento, index) => (
+            <div className="action-editor-row" key={`${acionamento.orgao}-${index}`}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={acionamento.ativo}
+                  disabled={!aguardando}
+                  onChange={() => alternarAcionamento(index)}
+                />
+                {acionamento.orgao}
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={acionamento.prioridade}
+                disabled={!aguardando || !acionamento.ativo}
+                onChange={(event) => alterarPrioridade(index, event.target.value)}
+              />
+            </div>
+          ))}
+          <div className="add-action-row">
+            <input
+              type="text"
+              value={novoOrgao}
+              onChange={(event) => setNovoOrgao(event.target.value)}
+              placeholder="Adicionar órgão"
+              disabled={!aguardando}
+            />
+            <input
+              type="number"
+              min="1"
+              value={novaPrioridade}
+              onChange={(event) => setNovaPrioridade(event.target.value)}
+              disabled={!aguardando}
+            />
+            <button type="button" className="button button-secondary" disabled={!aguardando} onClick={adicionarAcionamento}>
+              Adicionar
+            </button>
+          </div>
+          <label>
+            Orientação para a equipe em campo
+            <textarea
+              value={orientacao}
+              onChange={(event) => setOrientacao(event.target.value)}
+              disabled={!aguardando}
+              rows="4"
+            />
+          </label>
+        </div>
+        <div className="decision-actions">
           <button
             type="button"
             className="button button-primary"
-            disabled={!aguardando || enviando === 'aprovada'}
-            onClick={() => decidir('aprovada')}
+            disabled={!aguardando || acionamentosAtivos.length === 0 || enviando === 'aprovada'}
+            onClick={() => decidir('aprovada', {
+              acionamentos_definidos: acionamentosAtivos.map(({ orgao, prioridade }) => ({ orgao, prioridade })),
+              orientacao_campo: orientacao,
+            })}
           >
             Aprovar
           </button>
-        </div>
-        <div>
-          <h3>Ajustar</h3>
-          <p>Escolha um protocolo ativo quando a regra precisar de correção.</p>
-          <select
-            value={protocoloId}
-            onChange={(event) => setProtocoloId(event.target.value)}
-            disabled={!aguardando}
-          >
-            <option value="">Selecione um protocolo</option>
-            {detalhe.protocolos_ativos.map((protocolo) => (
-              <option key={protocolo.id} value={protocolo.id}>
-                {protocolo.codigo} - {protocolo.nome}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            className="button button-secondary"
-            disabled={!aguardando || !protocoloId || enviando === 'ajustada'}
-            onClick={() => decidir('ajustada', { protocolo_escolhido_id: protocoloId })}
-          >
-            Ajustar
-          </button>
-        </div>
-        <div>
           <h3>Descartar</h3>
           <p>Informe o motivo para descartar a ocorrência.</p>
           <textarea
@@ -776,11 +909,54 @@ function DecisionPanel({ detalhe, onDecidido }) {
   );
 }
 
+function EvidenceCard({ evidencia, detalhe, decisionProps }) {
+  return (
+    <article className="card evidence-card">
+      {evidencia.frame ? (
+        <img src={`/api/midia/${evidencia.frame}`} alt="Frame de evidência da ocorrência" />
+      ) : (
+        <div className="empty-frame">Sem frame disponível</div>
+      )}
+      <div className="evidence-content">
+        <div>
+          <p className="eyebrow">Evidência identificada pela análise</p>
+          <h2>{evidencia.fallback ? 'Frame principal' : 'Fatos comprovados'}</h2>
+          {evidencia.fatos.length > 0 ? (
+            <div className="compact-list">
+              {evidencia.fatos.map((fato) => (
+                <span key={fato}>{fatoLabels[fato] || fato.replaceAll('_', ' ')}</span>
+              ))}
+            </div>
+          ) : (
+            <p className="muted">Ocorrência sem frame_evidencia. Exibindo o frame principal.</p>
+          )}
+        </div>
+        <div>
+          <h3>Protocolos aplicáveis segundo a regra</h3>
+          <div className="protocol-list compact-list">
+            {evidencia.protocolos.length > 0 ? evidencia.protocolos.map((protocolo) => (
+              <span key={`${evidencia.frame}-${protocolo.protocolo_id || protocolo.codigo}`}>
+                {protocolo.codigo} - {protocolo.nome}
+              </span>
+            )) : (
+              <span>Nenhum protocolo relacionado a esta evidência</span>
+            )}
+          </div>
+        </div>
+        <DecisionPanel detalhe={detalhe} {...decisionProps} />
+      </div>
+    </article>
+  );
+}
+
 function OcorrenciaDetalhePage({ id }) {
   const [detalhe, setDetalhe] = useState(null);
   const [frameAtual, setFrameAtual] = useState('');
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
+  const [mostrarTodosFrames, setMostrarTodosFrames] = useState(false);
+  const [acionamentos, setAcionamentos] = useState([]);
+  const [orientacao, setOrientacao] = useState('');
 
   const carregar = useCallback(async () => {
     try {
@@ -810,6 +986,22 @@ function OcorrenciaDetalhePage({ id }) {
     return () => window.clearInterval(intervalId);
   }, [carregar, detalhe?.ocorrencia?.status]);
 
+  useEffect(() => {
+    if (!detalhe) {
+      return;
+    }
+
+    const definidos = Array.isArray(detalhe.ocorrencia.acionamentos_definidos)
+      && detalhe.ocorrencia.acionamentos_definidos.length > 0
+      ? normalizarAcionamentosUi(detalhe.ocorrencia.acionamentos_definidos)
+      : acionamentosSugeridosUi(detalhe.ocorrencia.protocolos_casados);
+
+    // oxlint-disable-next-line react/set-state-in-effect
+    setAcionamentos(definidos);
+    // oxlint-disable-next-line react/set-state-in-effect
+    setOrientacao(detalhe.ocorrencia.orientacao_campo || '');
+  }, [detalhe]);
+
   const sequenciaFrames = useMemo(() => (
     normalizarFrames(detalhe?.ocorrencia?.frames, detalhe?.ocorrencia?.frame_principal)
   ), [detalhe]);
@@ -817,6 +1009,9 @@ function OcorrenciaDetalhePage({ id }) {
   const frameIndex = sequenciaFrames.indexOf(frameAtual);
   const framePosicao = frameIndex >= 0 ? frameIndex : 0;
   const totalFrames = sequenciaFrames.length;
+  const evidencias = useMemo(() => (
+    detalhe ? montarEvidencias(detalhe.ocorrencia) : []
+  ), [detalhe]);
 
   const irParaFrame = useCallback((direcao) => {
     setFrameAtual((atual) => {
@@ -890,54 +1085,81 @@ function OcorrenciaDetalhePage({ id }) {
         <p>{formatarData(ocorrencia.detectada_em || ocorrencia.created_at)}</p>
       </section>
 
-      <section className="detail-layout">
+      <section className="evidence-layout">
         <div className="detail-main">
-          <article className="card frame-card">
-            {frameAtual ? (
-              <img src={`/api/midia/${frameAtual}`} alt="Frame selecionado da ocorrência" />
-            ) : (
-              <div className="empty-frame">Sem frame disponível</div>
-            )}
-            <div className="frame-navigation">
-              <button
-                type="button"
-                className="button button-secondary"
-                disabled={totalFrames <= 1 || framePosicao === 0}
-                onClick={() => irParaFrame(-1)}
-              >
-                Anterior
-              </button>
-              <strong>
-                {totalFrames > 0 ? `Frame ${framePosicao + 1} de ${totalFrames}` : 'Sem frames'}
-              </strong>
-              <button
-                type="button"
-                className="button button-secondary"
-                disabled={totalFrames <= 1 || framePosicao >= totalFrames - 1}
-                onClick={() => irParaFrame(1)}
-              >
-                Próximo
-              </button>
-            </div>
-            {totalFrames > 0 ? (
-              <div className="frame-strip">
-                {sequenciaFrames.map((frame, index) => (
-                  <button
-                    type="button"
-                    key={frame}
-                    className={frame === frameAtual ? 'frame-thumb active' : 'frame-thumb'}
-                    onClick={() => setFrameAtual(frame)}
-                    aria-label={`Selecionar frame ${index + 1} de ${totalFrames}`}
-                  >
-                    <img src={`/api/midia/${frame}`} alt={`Miniatura do frame ${index + 1}`} />
-                    <span>{index + 1}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </article>
+          {evidencias.map((evidencia, index) => (
+            <EvidenceCard
+              key={`${evidencia.frame}-${index}`}
+              evidencia={evidencia}
+              detalhe={detalhe}
+              decisionProps={{
+                onDecidido: carregar,
+                acionamentos,
+                setAcionamentos,
+                orientacao,
+                setOrientacao,
+              }}
+            />
+          ))}
 
-          <article className="card">
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => setMostrarTodosFrames((atual) => !atual)}
+          >
+            {mostrarTodosFrames ? 'ocultar todos os frames' : 'ver todos os frames'}
+          </button>
+
+          {mostrarTodosFrames ? (
+            <article className="card frame-card">
+              {frameAtual ? (
+                <img src={`/api/midia/${frameAtual}`} alt="Frame selecionado da ocorrência" />
+              ) : (
+                <div className="empty-frame">Sem frame disponível</div>
+              )}
+              <div className="frame-navigation">
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  disabled={totalFrames <= 1 || framePosicao === 0}
+                  onClick={() => irParaFrame(-1)}
+                >
+                  Anterior
+                </button>
+                <strong>
+                  {totalFrames > 0 ? `Frame ${framePosicao + 1} de ${totalFrames}` : 'Sem frames'}
+                </strong>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  disabled={totalFrames <= 1 || framePosicao >= totalFrames - 1}
+                  onClick={() => irParaFrame(1)}
+                >
+                  Próximo
+                </button>
+              </div>
+              {totalFrames > 0 ? (
+                <div className="frame-strip">
+                  {sequenciaFrames.map((frame, index) => (
+                    <button
+                      type="button"
+                      key={frame}
+                      className={frame === frameAtual ? 'frame-thumb active' : 'frame-thumb'}
+                      onClick={() => setFrameAtual(frame)}
+                      aria-label={`Selecionar frame ${index + 1} de ${totalFrames}`}
+                    >
+                      <img src={`/api/midia/${frame}`} alt={`Miniatura do frame ${index + 1}`} />
+                      <span>{index + 1}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </article>
+          ) : null}
+        </div>
+
+        <aside className="detail-side">
+          <section className="card">
             <p className="eyebrow">Identificado pela análise</p>
             <h2>Fatos observados</h2>
             <dl className="facts-grid">
@@ -948,17 +1170,8 @@ function OcorrenciaDetalhePage({ id }) {
                 </div>
               ))}
             </dl>
-          </article>
+          </section>
 
-          <article className="card">
-            <p className="eyebrow">Regra operacional</p>
-            <h2>Protocolos aplicáveis</h2>
-            <ProtocolosCasados protocolos={ocorrencia.protocolos_casados} />
-          </article>
-        </div>
-
-        <aside className="detail-side">
-          <DecisionPanel detalhe={detalhe} onDecidido={carregar} />
           <section className="card">
             <p className="eyebrow">Auditoria</p>
             <h2>Eventos</h2>

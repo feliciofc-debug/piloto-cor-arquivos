@@ -75,32 +75,11 @@ function selecionarProtocoloCasado(protocolosCasados) {
 }
 
 function selecionarProtocoloAplicado(ocorrencia) {
-  if (ocorrencia.decisao === 'aprovada') {
+  if (ocorrencia.decisao === 'aprovada' || ocorrencia.decisao === 'ajustada') {
     return selecionarProtocoloCasado(ocorrencia.protocolos_casados);
   }
 
-  if (ocorrencia.decisao !== 'ajustada' || !ocorrencia.protocolo_escolhido_id) {
-    return null;
-  }
-
-  if (!ocorrencia.protocolo_escolhido_codigo) {
-    return null;
-  }
-
-  const casadoCorrespondente = Array.isArray(ocorrencia.protocolos_casados)
-    ? ocorrencia.protocolos_casados.find((protocolo) => (
-      protocolo.protocolo_id === ocorrencia.protocolo_escolhido_id
-    ))
-    : null;
-
-  return {
-    protocolo_id: ocorrencia.protocolo_escolhido_id,
-    codigo: ocorrencia.protocolo_escolhido_codigo,
-    nome: ocorrencia.protocolo_escolhido_nome,
-    prioridade: ocorrencia.protocolo_escolhido_prioridade,
-    acionamentos: ocorrencia.protocolo_escolhido_acionamentos,
-    acionamentos_suprimidos: casadoCorrespondente?.acionamentos_suprimidos === true,
-  };
+  return null;
 }
 
 function formatarDataMensagem(value) {
@@ -121,7 +100,7 @@ function montarMensagem({ ocorrencia, protocolo, acionamentos }) {
     `- ${acionamento.orgao}, prioridade ${acionamento.prioridade}`
   ));
 
-  return [
+  const mensagem = [
     'Piloto COR - ocorrência aprovada por operador',
     '',
     `Local: ${local}`,
@@ -129,7 +108,13 @@ function montarMensagem({ ocorrencia, protocolo, acionamentos }) {
     `Protocolo aplicável segundo a regra: ${protocolo.codigo} - ${protocolo.nome}`,
     'Órgãos a acionar:',
     ...linhasAcionamentos,
-  ].join('\n');
+  ];
+
+  if (ocorrencia.orientacao_campo) {
+    mensagem.push('', `Orientação para a equipe em campo: ${ocorrencia.orientacao_campo}`);
+  }
+
+  return mensagem.join('\n');
 }
 
 async function enviarMensagemTexto({ texto, log }) {
@@ -211,15 +196,12 @@ async function notificarOcorrenciaDecidida(ocorrenciaId, log = console) {
        o.created_at,
        o.decisao,
        o.protocolos_casados,
-       o.protocolo_escolhido_id,
+       o.acionamentos_definidos,
+       o.orientacao_campo,
        c.tunel,
-       p.codigo as protocolo_escolhido_codigo,
-       p.nome as protocolo_escolhido_nome,
-       p.prioridade as protocolo_escolhido_prioridade,
-       p.acionamentos as protocolo_escolhido_acionamentos
+       null as protocolo_escolhido_id
      from ocorrencias o
      left join cameras c on c.id = o.camera_id
-     left join protocolos p on p.id = o.protocolo_escolhido_id
      where o.id = $1
      limit 1`,
     [ocorrenciaId],
@@ -231,9 +213,13 @@ async function notificarOcorrenciaDecidida(ocorrenciaId, log = console) {
   }
 
   const protocolo = selecionarProtocoloAplicado(ocorrencia);
-  const acionamentos = acionamentosPrioridadeUm(protocolo);
+  const acionamentos = (Array.isArray(ocorrencia.acionamentos_definidos)
+    ? ocorrencia.acionamentos_definidos
+    : []).filter((acionamento) => (
+    Number(acionamento?.prioridade) === 1 && acionamento.orgao
+  ));
 
-  if (!protocolo || acionamentos.length === 0) {
+  if (!protocolo || protocolo.acionamentos_suprimidos || acionamentos.length === 0) {
     logInfo(
       log,
       { ocorrencia_id: ocorrenciaId, decisao: ocorrencia.decisao },

@@ -388,10 +388,82 @@ dd {
   grid-template-columns: minmax(0, 1fr) 420px;
 }
 
+.evidence-layout {
+  align-items: start;
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) 420px;
+}
+
 .detail-main,
 .detail-side {
   display: grid;
   gap: 24px;
+}
+
+.evidence-card {
+  overflow: hidden;
+  padding: 0;
+}
+
+.evidence-card > img {
+  aspect-ratio: 16 / 9;
+  display: block;
+  object-fit: cover;
+  width: 100%;
+}
+
+.evidence-content {
+  display: grid;
+  gap: 22px;
+  padding: 24px;
+}
+
+.inline-decision {
+  background: #f6f9fc;
+  border-radius: 16px;
+  padding: 20px;
+}
+
+.action-editor {
+  display: grid;
+  gap: 14px;
+}
+
+.action-editor-row {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 110px;
+}
+
+.action-editor-row label {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.add-action-row {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 100px auto;
+}
+
+.decision-actions {
+  display: grid;
+  gap: 14px;
+}
+
+.link-button {
+  background: transparent;
+  border: 0;
+  color: var(--cor-blue);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 800;
+  justify-self: start;
+  padding: 0;
+  text-decoration: underline;
 }
 
 .frame-card {
@@ -689,6 +761,9 @@ dd {
   .frame-navigation,
   .metric-numbers.two,
   .metrics-grid,
+  .add-action-row,
+  .action-editor-row,
+  .evidence-layout,
   .protocol-row-header,
   .upload-card,
   .detail-layout {

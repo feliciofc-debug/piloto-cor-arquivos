@@ -12,6 +12,7 @@ function montarProtocoloCasado(row, confiancaBaixa) {
     codigo: row.codigo,
     nome: row.nome,
     prioridade: row.prioridade,
+    criterios: row.criterios,
     acionamentos,
     acionamentos_sugeridos: confiancaBaixa ? [] : acionamentos,
     acionamentos_suprimidos: confiancaBaixa,
@@ -29,7 +30,7 @@ async function casarProtocolos(fatos, client = pool) {
 
   const confiancaBaixa = fatos.confianca === 'baixa';
   const result = await client.query(
-    `select id, codigo, nome, prioridade, acionamentos
+    `select id, codigo, nome, prioridade, criterios, acionamentos
      from protocolos
      where ativo = true
        and protocol_criteria_matches($1::jsonb, criterios)
