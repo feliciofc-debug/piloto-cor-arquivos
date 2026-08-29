@@ -340,6 +340,27 @@ function criterioUsaFato(criterios, fato) {
   ));
 }
 
+function camposDosCriterios(criterios) {
+  if (!criterios || typeof criterios !== 'object') {
+    return [];
+  }
+
+  const campos = [];
+  for (const grupo of ['todos', 'algum', 'nenhum']) {
+    if (!Array.isArray(criterios[grupo])) {
+      continue;
+    }
+
+    for (const condicao of criterios[grupo]) {
+      if (typeof condicao?.campo === 'string') {
+        campos.push(condicao.campo);
+      }
+    }
+  }
+
+  return Array.from(new Set(campos));
+}
+
 function protocolosPorFatos(protocolos, fatos) {
   const relacionados = (Array.isArray(protocolos) ? protocolos : []).filter((protocolo) => (
     fatos.some((fato) => criterioUsaFato(protocolo.criterios, fato))
@@ -909,9 +930,9 @@ function DecisionPanel({
   );
 }
 
-function EvidenceCard({ evidencia, onOpenImage }) {
+function EvidenceCard({ evidencia, highlighted, onOpenImage, onProtocolClick }) {
   return (
-    <article className="card evidence-row">
+    <article className={highlighted ? 'card evidence-row highlighted' : 'card evidence-row'}>
       {evidencia.frame ? (
         <button
           type="button"
@@ -941,9 +962,14 @@ function EvidenceCard({ evidencia, onOpenImage }) {
           <h3>Protocolos aplicáveis segundo a regra</h3>
           <div className="protocol-list compact-list">
             {evidencia.protocolos.length > 0 ? evidencia.protocolos.map((protocolo) => (
-              <span key={`${evidencia.frame}-${protocolo.protocolo_id || protocolo.codigo}`}>
+              <button
+                type="button"
+                className="protocol-chip"
+                key={`${evidencia.frame}-${protocolo.protocolo_id || protocolo.codigo}`}
+                onClick={() => onProtocolClick(protocolo)}
+              >
                 {protocolo.codigo} - {protocolo.nome}
-              </span>
+              </button>
             )) : (
               <span>Nenhum protocolo relacionado a esta evidência</span>
             )}
@@ -994,6 +1020,8 @@ function OcorrenciaDetalhePage({ id }) {
   const [acionamentos, setAcionamentos] = useState([]);
   const [orientacao, setOrientacao] = useState('');
   const [imagemAmpliada, setImagemAmpliada] = useState('');
+  const [framesDestacados, setFramesDestacados] = useState([]);
+  const [avisoEvidencia, setAvisoEvidencia] = useState('');
 
   const carregar = useCallback(async () => {
     try {
@@ -1066,6 +1094,40 @@ function OcorrenciaDetalhePage({ id }) {
     });
   }, [sequenciaFrames]);
 
+  function destacarProtocolo(protocolo) {
+    const evidenciasPorFato = detalhe?.ocorrencia?.fatos?.frame_evidencia;
+    const frames = normalizarFrames(detalhe?.ocorrencia?.frames, detalhe?.ocorrencia?.frame_principal);
+    const campos = camposDosCriterios(protocolo.criterios);
+    const framesEncontrados = [];
+    const semEvidencia = [];
+
+    if (campos.length === 0) {
+      setFramesDestacados([]);
+      setAvisoEvidencia('Este protocolo não tem critérios preservados nesta ocorrência para vincular a um frame de evidência.');
+      return;
+    }
+
+    for (const campo of campos) {
+      const indice = evidenciasPorFato?.[campo];
+      if (Number.isInteger(indice) && frames[indice]) {
+        framesEncontrados.push(frames[indice]);
+      } else {
+        semEvidencia.push(criterioLabels[campo] || campo);
+      }
+    }
+
+    setFramesDestacados(Array.from(new Set(framesEncontrados)));
+    setAvisoEvidencia(semEvidencia.length > 0
+      ? `Sem evidência registrada para: ${semEvidencia.join(', ')}.`
+      : '');
+
+    window.setTimeout(() => {
+      document.querySelector('.evidence-row.highlighted')?.scrollIntoView({
+        block: 'center',
+      });
+    }, 0);
+  }
+
   useEffect(() => {
     function onKeyDown(event) {
       const tagName = event.target?.tagName;
@@ -1128,9 +1190,13 @@ function OcorrenciaDetalhePage({ id }) {
             <EvidenceCard
               key={`${evidencia.frame}-${index}`}
               evidencia={evidencia}
+              highlighted={framesDestacados.includes(evidencia.frame)}
               onOpenImage={setImagemAmpliada}
+              onProtocolClick={destacarProtocolo}
             />
           ))}
+
+          {avisoEvidencia ? <p className="alert alert-warning">{avisoEvidencia}</p> : null}
 
           <section className="card decision-section">
             <DecisionPanel
