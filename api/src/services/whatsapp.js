@@ -1,5 +1,8 @@
+const fs = require('node:fs/promises');
+const path = require('node:path');
 const { config } = require('../config');
 const { pool } = require('../db');
+const { resolveStoragePath } = require('../storage');
 
 function logInfo(log, payload, message) {
   if (log && typeof log.info === 'function') {
@@ -55,6 +58,62 @@ function acionamentosPrioridadeUm(protocolo) {
   return acionamentosDoProtocolo(protocolo).filter((acionamento) => (
     Number(acionamento?.prioridade) === 1 && acionamento.orgao
   ));
+}
+
+function camposDoProtocolo(protocolo) {
+  const criterios = protocolo?.criterios;
+  if (!criterios || typeof criterios !== 'object') {
+    return [];
+  }
+
+  const campos = [];
+  for (const grupo of ['todos', 'algum', 'nenhum']) {
+    if (!Array.isArray(criterios[grupo])) {
+      continue;
+    }
+
+    for (const condicao of criterios[grupo]) {
+      if (typeof condicao?.campo === 'string') {
+        campos.push(condicao.campo);
+      }
+    }
+  }
+
+  return campos;
+}
+
+function selecionarFrameEvidencia(ocorrencia, protocolo) {
+  const frames = Array.isArray(ocorrencia.frames) ? ocorrencia.frames : [];
+  const evidencias = ocorrencia.fatos?.frame_evidencia;
+
+  if (evidencias && typeof evidencias === 'object' && !Array.isArray(evidencias)) {
+    const campos = camposDoProtocolo(protocolo);
+    for (const campo of campos) {
+      const indice = evidencias[campo];
+      if (Number.isInteger(indice) && frames[indice]) {
+        return frames[indice];
+      }
+    }
+
+    for (const indice of Object.values(evidencias)) {
+      if (Number.isInteger(indice) && frames[indice]) {
+        return frames[indice];
+      }
+    }
+  }
+
+  return ocorrencia.frame_principal || frames[0] || null;
+}
+
+function mimeTypeFor(framePath) {
+  const ext = path.extname(framePath).toLowerCase();
+  if (ext === '.png') {
+    return 'image/png';
+  }
+  if (ext === '.webp') {
+    return 'image/webp';
+  }
+  return 'image/jpeg';
 }
 
 function selecionarProtocoloCasado(protocolosCasados) {
@@ -115,6 +174,54 @@ function montarMensagem({ ocorrencia, protocolo, acionamentos }) {
   }
 
   return mensagem.join('\n');
+}
+
+async function uploadMediaImagem(framePath) {
+  const absolutePath = resolveStoragePath(framePath);
+  const bytes = await fs.readFile(absolutePath);
+  const formData = new FormData();
+
+  formData.append('messaging_product', 'whatsapp');
+  formData.append('file', new Blob([bytes], { type: mimeTypeFor(framePath) }), path.basename(framePath));
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.whatsappTimeoutMs);
+
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v20.0/${config.whatsappPhoneNumberId}/media`,
+      {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          authorization: `Bearer ${config.whatsappToken}`,
+        },
+        body: formData,
+      },
+    );
+
+    const payloadText = await response.text();
+    let payload = {};
+    try {
+      payload = JSON.parse(payloadText);
+    } catch {
+      payload = {};
+    }
+
+    if (!response.ok) {
+      throw new Error(`Meta media respondeu ${response.status}: ${payloadText.slice(0, 1000)}`);
+    }
+
+    if (!payload.id) {
+      throw new Error('Meta media nao retornou id');
+    }
+
+    return payload.id;
+  } catch (error) {
+    throw new Error(sanitizarErro(error));
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function enviarMensagemTexto({ texto, log }) {
@@ -179,6 +286,60 @@ async function enviarMensagemTexto({ texto, log }) {
   }
 }
 
+async function enviarMensagemImagem({ texto, framePath }) {
+  const destinoMascarado = mascararDestino(config.whatsappDestino);
+  const mediaId = await uploadMediaImagem(framePath);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.whatsappTimeoutMs);
+
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v20.0/${config.whatsappPhoneNumberId}/messages`,
+      {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          authorization: `Bearer ${config.whatsappToken}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          to: config.whatsappDestino,
+          type: 'image',
+          image: {
+            id: mediaId,
+            caption: texto,
+          },
+        }),
+      },
+    );
+
+    const payloadText = await response.text();
+    let payload = {};
+    try {
+      payload = JSON.parse(payloadText);
+    } catch {
+      payload = {};
+    }
+
+    if (!response.ok) {
+      throw new Error(`Meta Graph respondeu ${response.status}: ${payloadText.slice(0, 1000)}`);
+    }
+
+    return {
+      enviado: true,
+      destino: destinoMascarado,
+      message_id: payload.messages?.[0]?.id || null,
+      media_id: mediaId,
+    };
+  } catch (error) {
+    throw new Error(sanitizarErro(error));
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function registrarAuditoriaNotificacao({ ocorrenciaId, evento, detalhe }) {
   await pool.query(
     `insert into auditoria (ocorrencia_id, evento, ator, detalhe)
@@ -195,9 +356,12 @@ async function notificarOcorrenciaDecidida(ocorrenciaId, log = console) {
        o.detectada_em,
        o.created_at,
        o.decisao,
+       o.fatos,
        o.protocolos_casados,
        o.acionamentos_definidos,
        o.orientacao_campo,
+       o.frame_principal,
+       o.frames,
        c.tunel,
        null as protocolo_escolhido_id
      from ocorrencias o
@@ -230,9 +394,30 @@ async function notificarOcorrenciaDecidida(ocorrenciaId, log = console) {
 
   const texto = montarMensagem({ ocorrencia, protocolo, acionamentos });
   const destinoMascarado = mascararDestino(config.whatsappDestino);
+  const frameEvidencia = selecionarFrameEvidencia(ocorrencia, protocolo);
 
   try {
-    const envio = await enviarMensagemTexto({ texto, log });
+    let envio;
+    let imagemIncluida = false;
+    let mediaId = null;
+
+    if (config.whatsappAtivo && frameEvidencia) {
+      try {
+        envio = await enviarMensagemImagem({ texto, framePath: frameEvidencia });
+        imagemIncluida = true;
+        mediaId = envio.media_id;
+      } catch (imageError) {
+        logError(
+          log,
+          { err: sanitizarErro(imageError), ocorrencia_id: ocorrenciaId, frame: frameEvidencia },
+          'falha ao enviar imagem whatsapp; tentando texto',
+        );
+      }
+    }
+
+    if (!envio) {
+      envio = await enviarMensagemTexto({ texto, log });
+    }
 
     if (!envio.enviado) {
       return;
@@ -244,6 +429,9 @@ async function notificarOcorrenciaDecidida(ocorrenciaId, log = console) {
       detalhe: {
         destino: envio.destino,
         message_id: envio.message_id,
+        imagem_incluida: imagemIncluida,
+        frame: imagemIncluida ? frameEvidencia : null,
+        media_id: mediaId,
         protocolo_codigo: protocolo.codigo,
         protocolo_nome: protocolo.nome,
       },
@@ -258,6 +446,8 @@ async function notificarOcorrenciaDecidida(ocorrenciaId, log = console) {
       detalhe: {
         destino: destinoMascarado,
         erro,
+        imagem_incluida: false,
+        frame: frameEvidencia,
         protocolo_codigo: protocolo.codigo,
         protocolo_nome: protocolo.nome,
       },
@@ -273,6 +463,7 @@ module.exports = {
   mascararDestino,
   montarMensagem,
   notificarOcorrenciaDecidida,
+  selecionarFrameEvidencia,
   selecionarProtocoloAplicado,
   selecionarProtocoloCasado,
 };
