@@ -909,11 +909,17 @@ function DecisionPanel({
   );
 }
 
-function EvidenceCard({ evidencia, detalhe, decisionProps }) {
+function EvidenceCard({ evidencia, onOpenImage }) {
   return (
-    <article className="card evidence-card">
+    <article className="card evidence-row">
       {evidencia.frame ? (
-        <img src={`/api/midia/${evidencia.frame}`} alt="Frame de evidência da ocorrência" />
+        <button
+          type="button"
+          className="evidence-thumb"
+          onClick={() => onOpenImage(evidencia.frame)}
+        >
+          <img src={`/api/midia/${evidencia.frame}`} alt="Frame de evidência da ocorrência" />
+        </button>
       ) : (
         <div className="empty-frame">Sem frame disponível</div>
       )}
@@ -943,9 +949,39 @@ function EvidenceCard({ evidencia, detalhe, decisionProps }) {
             )}
           </div>
         </div>
-        <DecisionPanel detalhe={detalhe} {...decisionProps} />
       </div>
     </article>
+  );
+}
+
+function ImageModal({ frame, onClose }) {
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    }
+
+    if (frame) {
+      window.addEventListener('keydown', onKeyDown);
+    }
+
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [frame, onClose]);
+
+  if (!frame) {
+    return null;
+  }
+
+  return (
+    <div className="image-modal" role="dialog" aria-modal="true">
+      <div className="image-modal-content">
+        <button type="button" className="button button-ghost image-modal-close" onClick={onClose}>
+          Fechar
+        </button>
+        <img src={`/api/midia/${frame}`} alt="Frame de evidência ampliado" />
+      </div>
+    </div>
   );
 }
 
@@ -957,6 +993,7 @@ function OcorrenciaDetalhePage({ id }) {
   const [mostrarTodosFrames, setMostrarTodosFrames] = useState(false);
   const [acionamentos, setAcionamentos] = useState([]);
   const [orientacao, setOrientacao] = useState('');
+  const [imagemAmpliada, setImagemAmpliada] = useState('');
 
   const carregar = useCallback(async () => {
     try {
@@ -1091,16 +1128,20 @@ function OcorrenciaDetalhePage({ id }) {
             <EvidenceCard
               key={`${evidencia.frame}-${index}`}
               evidencia={evidencia}
-              detalhe={detalhe}
-              decisionProps={{
-                onDecidido: carregar,
-                acionamentos,
-                setAcionamentos,
-                orientacao,
-                setOrientacao,
-              }}
+              onOpenImage={setImagemAmpliada}
             />
           ))}
+
+          <section className="card decision-section">
+            <DecisionPanel
+              detalhe={detalhe}
+              onDecidido={carregar}
+              acionamentos={acionamentos}
+              setAcionamentos={setAcionamentos}
+              orientacao={orientacao}
+              setOrientacao={setOrientacao}
+            />
+          </section>
 
           <button
             type="button"
@@ -1187,6 +1228,7 @@ function OcorrenciaDetalhePage({ id }) {
           </section>
         </aside>
       </section>
+      <ImageModal frame={imagemAmpliada} onClose={() => setImagemAmpliada('')} />
     </AppShell>
   );
 }

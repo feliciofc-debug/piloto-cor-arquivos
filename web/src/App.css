@@ -401,22 +401,39 @@ dd {
   gap: 24px;
 }
 
-.evidence-card {
+.evidence-row {
+  align-items: stretch;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: 220px minmax(0, 1fr);
+  padding: 16px;
+}
+
+.evidence-thumb {
+  background: #d8e2ee;
+  border: 0;
+  border-radius: 14px;
+  cursor: pointer;
   overflow: hidden;
   padding: 0;
 }
 
-.evidence-card > img {
+.evidence-thumb img {
   aspect-ratio: 16 / 9;
   display: block;
+  height: 100%;
   object-fit: cover;
   width: 100%;
 }
 
 .evidence-content {
   display: grid;
-  gap: 22px;
-  padding: 24px;
+  gap: 14px;
+}
+
+.decision-section .decision-grid {
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.8fr);
 }
 
 .inline-decision {
@@ -464,6 +481,36 @@ dd {
   justify-self: start;
   padding: 0;
   text-decoration: underline;
+}
+
+.image-modal {
+  align-items: center;
+  background: rgba(9, 20, 36, 0.82);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 32px;
+  position: fixed;
+  z-index: 50;
+}
+
+.image-modal-content {
+  display: grid;
+  gap: 14px;
+  max-height: 92vh;
+  max-width: min(1100px, 94vw);
+}
+
+.image-modal-content img {
+  background: #102238;
+  border-radius: 14px;
+  max-height: 82vh;
+  max-width: 100%;
+  object-fit: contain;
+}
+
+.image-modal-close {
+  justify-self: end;
 }
 
 .frame-card {
@@ -758,6 +805,8 @@ dd {
 
   .filters,
   .card-link,
+  .decision-section .decision-grid,
+  .evidence-row,
   .frame-navigation,
   .metric-numbers.two,
   .metrics-grid,
