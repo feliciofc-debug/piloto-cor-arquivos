@@ -6,6 +6,9 @@ const camposFatoPermitidos = new Set([
   'veiculos.moto',
   'veiculos.caminhao',
   'veiculos.onibus',
+  'veiculos_estacionados',
+  'veiculos_parados_na_pista',
+  'veiculos_em_movimento',
   'pessoa_na_pista',
   'pessoa_ao_solo',
   'fogo',
@@ -21,6 +24,9 @@ const camposNumericos = new Set([
   'veiculos.moto',
   'veiculos.caminhao',
   'veiculos.onibus',
+  'veiculos_estacionados',
+  'veiculos_parados_na_pista',
+  'veiculos_em_movimento',
 ]);
 
 const camposBooleanos = new Set([

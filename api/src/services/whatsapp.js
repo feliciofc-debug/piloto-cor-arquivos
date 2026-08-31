@@ -83,7 +83,16 @@ function camposDoProtocolo(protocolo) {
 }
 
 const camposPorTipoEvidencia = {
-  veiculo: ['veiculo_parado', 'veiculos.carro', 'veiculos.moto', 'veiculos.caminhao', 'veiculos.onibus'],
+  veiculo: [
+    'veiculo_parado',
+    'veiculos.carro',
+    'veiculos.moto',
+    'veiculos.caminhao',
+    'veiculos.onibus',
+    'veiculos_estacionados',
+    'veiculos_parados_na_pista',
+    'veiculos_em_movimento',
+  ],
   pessoa: ['pessoa_na_pista', 'pessoa_ao_solo'],
   fogo: ['fogo'],
   fumaca: ['fumaca'],

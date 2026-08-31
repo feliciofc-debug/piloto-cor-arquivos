@@ -73,6 +73,7 @@ services:
       VISION_FRAMES_EVIDENCIA: ${VISION_FRAMES_EVIDENCIA:-6}
       VIDEO_MAX_SEG: ${VIDEO_MAX_SEG:-60}
       VIDEO_REDUCAO_MAX: ${VIDEO_REDUCAO_MAX:-480}
+      FFMPEG_TIMEOUT_SECONDS: ${FFMPEG_TIMEOUT_SECONDS:-120}
     volumes:
       - ./storage:/app/storage
     depends_on:
@@ -86,6 +87,8 @@ services:
 
 
   nginx:
+    profiles:
+      - legacy
     build:
       context: .
       dockerfile: web/Dockerfile

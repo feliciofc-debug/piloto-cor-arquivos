@@ -38,7 +38,7 @@ const config = {
   workerToken: env('WORKER_TOKEN'),
   storageDir: env('STORAGE_DIR', path.resolve(__dirname, '../../storage')),
   uploadMaxBytes: Number(env('UPLOAD_MAX_BYTES', String(100 * 1024 * 1024))),
-  frameJobTimeoutMinutes: Number(env('FRAME_JOB_TIMEOUT_MINUTES', '5')),
+  frameJobTimeoutMinutes: Number(env('FRAME_JOB_TIMEOUT_MINUTES', '15')),
   frameJobMaxAttempts: Number(env('FRAME_JOB_MAX_ATTEMPTS', '3')),
   frameMaintenanceIntervalMs: Number(env('FRAME_MAINTENANCE_INTERVAL_MS', '60000')),
   analiseTimeoutMinutes: Number(env('ANALISE_TIMEOUT_MINUTES', '10')),

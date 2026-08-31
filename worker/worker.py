@@ -19,6 +19,7 @@ VIDEO_MAX_MB = float(os.getenv("VIDEO_MAX_MB", "18"))
 VISION_FRAMES_EVIDENCIA = int(os.getenv("VISION_FRAMES_EVIDENCIA", "6"))
 VIDEO_MAX_SEG = int(os.getenv("VIDEO_MAX_SEG", "60"))
 VIDEO_REDUCAO_MAX = int(os.getenv("VIDEO_REDUCAO_MAX", "480"))
+FFMPEG_TIMEOUT_SECONDS = float(os.getenv("FFMPEG_TIMEOUT_SECONDS", "120"))
 
 
 def log(message, **fields):
@@ -52,21 +53,25 @@ def safe_storage_path(relative_path):
 
 
 def video_duration_seconds(input_path):
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(input_path),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(input_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=FFMPEG_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(f"ffprobe excedeu timeout de {FFMPEG_TIMEOUT_SECONDS}s") from error
 
     if result.returncode != 0:
         stderr = result.stderr.strip() or "ffprobe nao reconheceu o arquivo como video"
@@ -83,13 +88,47 @@ def video_duration_seconds(input_path):
     return duration
 
 
+def video_codec(input_path):
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "stream=codec_name",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(input_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=FFMPEG_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(f"ffprobe excedeu timeout de {FFMPEG_TIMEOUT_SECONDS}s") from error
+
+    if result.returncode != 0:
+        return None
+
+    codec = result.stdout.strip().splitlines()
+    return codec[0].strip() if codec and codec[0].strip() else None
+
+
 def run_command(command):
-    result = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=FFMPEG_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(f"ffmpeg excedeu timeout de {FFMPEG_TIMEOUT_SECONDS}s") from error
 
     if result.returncode != 0:
         stderr = result.stderr.strip() or "ffmpeg falhou sem mensagem"
@@ -183,7 +222,12 @@ def prepare_analysis_video(job, duration):
         shutil.rmtree(destino.parent)
     destino.parent.mkdir(parents=True, exist_ok=True)
 
-    if origem.suffix.lower() == ".mp4" and origem.stat().st_size <= max_bytes:
+    if (
+        origem.suffix.lower() == ".mp4"
+        and video_codec(origem) == "h264"
+        and duration <= VIDEO_MAX_SEG
+        and origem.stat().st_size <= max_bytes
+    ):
         shutil.copy2(origem, destino)
         return str(destino_relativo).replace("\\", "/"), False
 
