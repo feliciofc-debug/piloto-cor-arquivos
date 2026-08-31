@@ -15,7 +15,6 @@ const visionSchema = {
     'carga_derramada',
     'agua_na_pista',
     'veiculo_parado',
-    'veiculos_parados',
     'veiculos_estacionados',
     'veiculos_parados_na_pista',
     'veiculos_em_movimento',
@@ -43,7 +42,6 @@ const visionSchema = {
     carga_derramada: { type: 'boolean' },
     agua_na_pista: { type: 'boolean' },
     veiculo_parado: { type: 'boolean' },
-    veiculos_parados: { type: 'integer', minimum: 0 },
     veiculos_estacionados: { type: 'integer', minimum: 0 },
     veiculos_parados_na_pista: { type: 'integer', minimum: 0 },
     veiculos_em_movimento: { type: 'integer', minimum: 0 },
@@ -225,10 +223,6 @@ function validarFrameEvidencia(fatos, amostras) {
     };
   });
 
-  if (fatos.veiculos_parados !== fatos.veiculos_parados_na_pista) {
-    throw new Error('resposta de visao invalida: veiculos_parados incoerente');
-  }
-
   if (fatos.veiculo_parado !== (fatos.veiculos_parados_na_pista > 0)) {
     throw new Error('resposta de visao invalida: veiculo_parado incoerente');
   }
@@ -274,10 +268,6 @@ function validarFatos(fatos, amostras = []) {
     }
   }
 
-  if (!Number.isInteger(fatos.veiculos_parados) || fatos.veiculos_parados < 0) {
-    throw new Error('resposta de visao invalida: veiculos_parados');
-  }
-
   if (!Number.isInteger(fatos.veiculos_estacionados) || fatos.veiculos_estacionados < 0) {
     throw new Error('resposta de visao invalida: veiculos_estacionados');
   }
@@ -303,6 +293,7 @@ function validarFatos(fatos, amostras = []) {
   }
 
   validarFrameEvidencia(fatos, amostras);
+  fatos.veiculos_parados = fatos.veiculos_estacionados + fatos.veiculos_parados_na_pista;
 
   return fatos;
 }
