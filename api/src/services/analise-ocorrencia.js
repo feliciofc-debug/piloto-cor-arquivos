@@ -1,6 +1,6 @@
 const { pool } = require('../db');
 const { config } = require('../config');
-const { analisarFrames } = require('./visao');
+const { analisarVideo } = require('./visao');
 const { casarProtocolos } = require('./protocolos');
 
 async function atualizarFalhaAnalise(client, ocorrenciaId, error, detalheExtra = {}) {
@@ -36,7 +36,7 @@ async function analisarOcorrencia(ocorrenciaId, log = console) {
 
   try {
     const ocorrenciaResult = await pool.query(
-      `select id, frames
+      `select id, frames, video_analise, video_analise_truncado
        from ocorrencias
        where id = $1
        limit 1`,
@@ -48,8 +48,10 @@ async function analisarOcorrencia(ocorrenciaId, log = console) {
       throw new Error(`ocorrencia nao encontrada: ${ocorrenciaId}`);
     }
 
-    const resultado = await analisarFrames({
+    const resultado = await analisarVideo({
+      video: ocorrencia.video_analise,
       frames: ocorrencia.frames || [],
+      videoTruncado: ocorrencia.video_analise_truncado,
     });
 
     const client = await pool.connect();
@@ -88,6 +90,8 @@ async function analisarOcorrencia(ocorrenciaId, log = console) {
             fatos: resultado.fatos,
             provider: resultado.provider,
             model: resultado.model,
+            video_enviado: resultado.video_enviado,
+            video_truncado: resultado.video_truncado,
             duracao_ms: resultado.duracao_ms,
             frames_enviados: resultado.frames_enviados,
           }),
@@ -144,6 +148,8 @@ async function analisarOcorrencia(ocorrenciaId, log = console) {
               fatos: resultado.fatos,
               provider: resultado.provider,
               model: resultado.model,
+              video_enviado: resultado.video_enviado,
+              video_truncado: resultado.video_truncado,
               duracao_ms: resultado.duracao_ms,
               frames_enviados: resultado.frames_enviados,
             }),
@@ -160,6 +166,8 @@ async function analisarOcorrencia(ocorrenciaId, log = console) {
               fatos: resultado.fatos,
               provider: resultado.provider,
               model: resultado.model,
+              video_enviado: resultado.video_enviado,
+              video_truncado: resultado.video_truncado,
               duracao_ms: resultado.duracao_ms,
               frames_enviados: resultado.frames_enviados,
             }),

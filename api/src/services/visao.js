@@ -16,6 +16,8 @@ const visionSchema = {
     'agua_na_pista',
     'veiculo_parado',
     'veiculos_parados',
+    'veiculos_estacionados',
+    'veiculos_parados_na_pista',
     'veiculos_em_movimento',
     'bloqueio_via',
     'confianca',
@@ -42,6 +44,8 @@ const visionSchema = {
     agua_na_pista: { type: 'boolean' },
     veiculo_parado: { type: 'boolean' },
     veiculos_parados: { type: 'integer', minimum: 0 },
+    veiculos_estacionados: { type: 'integer', minimum: 0 },
+    veiculos_parados_na_pista: { type: 'integer', minimum: 0 },
     veiculos_em_movimento: { type: 'integer', minimum: 0 },
     bloqueio_via: { type: 'string', enum: ['nenhum', 'parcial', 'total'] },
     confianca: { type: 'string', enum: ['alta', 'media', 'baixa'] },
@@ -61,7 +65,7 @@ const visionSchema = {
           descricao: { type: 'string' },
           estado: {
             anyOf: [
-              { type: 'string', enum: ['parado', 'em_movimento', 'indeterminado'] },
+              { type: 'string', enum: ['estacionado', 'parado_na_pista', 'em_movimento', 'indeterminado'] },
               { type: 'null' },
             ],
           },
@@ -72,18 +76,22 @@ const visionSchema = {
 };
 
 const prompt = [
-  'Analise as imagens de uma cena de tunel.',
+  'Analise o video de uma cena de tunel.',
   'Preencha somente os campos do schema com fatos visuais observaveis.',
-  'Observe cuidadosamente toda a sequencia antes de responder.',
+  'Use a nocao temporal do video antes de responder.',
+  'A contagem exata pode variar; priorize detectar presenca e estado dos elementos que geram ocorrencia.',
+  'Os protocolos dependem principalmente de presenca e estado: pessoa na pista, veiculo parado na faixa, fogo, fumaca, agua e bloqueio.',
   'A sequencia mostra a mesma cena ao longo do tempo: conte elementos unicos, nao aparicoes.',
   'Uma pessoa ou veiculo que se desloca entre quadros continua sendo o mesmo elemento e deve gerar um unico item de evidencia.',
   'Elementos so sao distintos quando aparecem simultaneamente no mesmo quadro ou quando ha caracteristica visivel que os diferencie, como cor, tipo ou posicao incompativel com deslocamento.',
   'Em caso de duvida sobre dois elementos ou o mesmo elemento em momentos diferentes, conte como um e registre a duvida na observacao.',
   'E preferivel subcontar a inflar a cena.',
   'Conte cada veiculo unico visivel ao longo de toda a sequencia, incluindo os que aparecem em apenas alguns quadros.',
-  'Para cada veiculo observado, determine se esta parado ou em movimento comparando sua posicao entre os quadros.',
-  'Veiculo que muda de posicao entre quadros esta em movimento.',
-  'Veiculo que permanece na mesma posicao entre quadros esta parado.',
+  'Para cada veiculo observado, determine se esta estacionado, parado na pista, em movimento ou indeterminado.',
+  'Veiculo estacionado fora da faixa de rolamento nao conta como veiculo_parado.',
+  'Veiculo parado sobre faixa de rolamento conta como veiculo_parado.',
+  'veiculo_parado deve ser true somente quando veiculos_parados_na_pista for maior que zero.',
+  'Veiculo que muda de posicao ao longo do video esta em movimento.',
   'Se nao for possivel determinar o movimento, use estado indeterminado.',
   'Nao use parado nem em_movimento como padrao.',
   'Se um veiculo aparece em apenas um quadro, ele conta e seu estado deve ser indeterminado.',
@@ -91,14 +99,13 @@ const prompt = [
   'pessoa_na_pista refere-se exclusivamente a pessoa na faixa de rolamento.',
   'Pessoa em calcada, passeio, canteiro ou area de seguranca nao conta como pessoa_na_pista.',
   'Na observacao, descreva a cena com detalhe: quantos veiculos, onde estao, quantas pessoas e o que fazem.',
-  'Para frame_evidencia, use indice base 0 da lista de imagens enviada.',
+  'Para frame_evidencia, use indice base 0 da lista de frames de evidencia enviada junto do video.',
   'frame_evidencia deve ser uma lista com um item para cada elemento unico relevante observado, nao um item por aparicao e nao um item por fato.',
   'Se o mesmo elemento aparece em varios frames, escolha o frame em que ele esta mais nitido.',
   'A descricao deve localizar o elemento na cena para o operador reconhecer qual e.',
-  'A quantidade de itens do tipo veiculo deve ser coerente com a contagem registrada em veiculos.',
-  'Para item do tipo veiculo, estado e obrigatorio: parado, em_movimento ou indeterminado.',
+  'Os itens de frame_evidencia sao evidencias representativas para conferencia visual, nao uma auditoria exata da contagem.',
+  'Para item do tipo veiculo, estado e obrigatorio: estacionado, parado_na_pista, em_movimento ou indeterminado.',
   'Para itens que nao sejam veiculo, estado deve ser null.',
-  'veiculo_parado deve ser true somente quando veiculos_parados for maior que zero.',
   'Para pessoa, a descricao deve dizer se esta na faixa de rolamento ou fora dela.',
   'Nao classifique gravidade, nao sugira acionamento, nao identifique pessoas, nao estime obito e nao leia placas.',
 ].join(' ');
@@ -150,6 +157,23 @@ async function frameToImageContent(framePath) {
   };
 }
 
+async function videoToContent(videoPath) {
+  if (!videoPath) {
+    throw new Error('nenhum video disponivel para analise');
+  }
+
+  const absolutePath = resolveStoragePath(videoPath);
+  const bytes = await fs.readFile(absolutePath);
+  const base64 = bytes.toString('base64');
+
+  return {
+    type: 'video_url',
+    video_url: {
+      url: `data:video/mp4;base64,${base64}`,
+    },
+  };
+}
+
 async function frameToContentParts(amostra, indiceEnviado) {
   return [
     {
@@ -162,7 +186,7 @@ async function frameToContentParts(amostra, indiceEnviado) {
 
 function validarFrameEvidencia(fatos, amostras) {
   const tiposPermitidos = new Set(['veiculo', 'pessoa', 'fogo', 'fumaca', 'agua', 'carga', 'outro']);
-  const estadosVeiculo = new Set(['parado', 'em_movimento', 'indeterminado']);
+  const estadosVeiculo = new Set(['estacionado', 'parado_na_pista', 'em_movimento', 'indeterminado']);
 
   if (!Array.isArray(fatos.frame_evidencia)) {
     throw new Error('resposta de visao invalida: frame_evidencia deve ser lista');
@@ -201,24 +225,11 @@ function validarFrameEvidencia(fatos, amostras) {
     };
   });
 
-  const totalVeiculos = Object.values(fatos.veiculos).reduce((total, valor) => total + valor, 0);
-  const evidenciasVeiculos = convertido.filter((item) => item.tipo === 'veiculo').length;
-  if (totalVeiculos !== evidenciasVeiculos) {
-    throw new Error('resposta de visao invalida: quantidade de evidencias de veiculos incoerente');
-  }
-
-  const veiculosParados = convertido.filter((item) => item.tipo === 'veiculo' && item.estado === 'parado').length;
-  const veiculosEmMovimento = convertido.filter((item) => item.tipo === 'veiculo' && item.estado === 'em_movimento').length;
-
-  if (fatos.veiculos_parados !== veiculosParados) {
+  if (fatos.veiculos_parados !== fatos.veiculos_parados_na_pista) {
     throw new Error('resposta de visao invalida: veiculos_parados incoerente');
   }
 
-  if (fatos.veiculos_em_movimento !== veiculosEmMovimento) {
-    throw new Error('resposta de visao invalida: veiculos_em_movimento incoerente');
-  }
-
-  if (fatos.veiculo_parado !== (fatos.veiculos_parados > 0)) {
+  if (fatos.veiculo_parado !== (fatos.veiculos_parados_na_pista > 0)) {
     throw new Error('resposta de visao invalida: veiculo_parado incoerente');
   }
 
@@ -267,6 +278,14 @@ function validarFatos(fatos, amostras = []) {
     throw new Error('resposta de visao invalida: veiculos_parados');
   }
 
+  if (!Number.isInteger(fatos.veiculos_estacionados) || fatos.veiculos_estacionados < 0) {
+    throw new Error('resposta de visao invalida: veiculos_estacionados');
+  }
+
+  if (!Number.isInteger(fatos.veiculos_parados_na_pista) || fatos.veiculos_parados_na_pista < 0) {
+    throw new Error('resposta de visao invalida: veiculos_parados_na_pista');
+  }
+
   if (!Number.isInteger(fatos.veiculos_em_movimento) || fatos.veiculos_em_movimento < 0) {
     throw new Error('resposta de visao invalida: veiculos_em_movimento');
   }
@@ -300,7 +319,7 @@ function authHeadersPorProvedor() {
   };
 }
 
-async function chamarChatCompletions({ imagens, signal }) {
+async function chamarChatCompletions({ conteudo, signal }) {
   const visionPath = config.visionApiPath.startsWith('/')
     ? config.visionApiPath
     : `/${config.visionApiPath}`;
@@ -332,9 +351,9 @@ async function chamarChatCompletions({ imagens, signal }) {
           content: [
             {
               type: 'text',
-              text: 'Preencha os campos do schema a partir destas imagens.',
+              text: 'Preencha os campos do schema a partir deste video. Use os frames de evidencia apenas para escolher a imagem representativa exibida ao operador.',
             },
-            ...imagens,
+            ...conteudo,
           ],
         },
       ],
@@ -361,19 +380,16 @@ async function chamarChatCompletions({ imagens, signal }) {
   return JSON.parse(content);
 }
 
-async function analisarFrames({ frames }) {
-  if (!Array.isArray(frames) || frames.length === 0) {
-    throw new Error('nenhum frame disponivel para analise');
-  }
-
+async function analisarVideo({ video, frames = [], videoTruncado = false }) {
   if (!config.visionApiKey) {
     throw new Error('VISION_API_KEY nao configurada');
   }
 
   const inicio = Date.now();
-  const selecionados = selecionarAmostraComIndices(frames, config.visionMaxFrames);
+  const selecionados = selecionarAmostraComIndices(frames, config.visionFramesEvidencia);
+  const videoContent = await videoToContent(video);
   const partesPorFrame = await Promise.all(selecionados.map(frameToContentParts));
-  const imagens = partesPorFrame.flat();
+  const conteudo = [videoContent, ...partesPorFrame.flat()];
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.visionTimeoutMs);
@@ -383,19 +399,26 @@ async function analisarFrames({ frames }) {
 
     if (['openai', 'openai-compatible', 'lovable'].includes(config.visionProvider)) {
       fatos = await chamarChatCompletions({
-        imagens,
+        conteudo,
         signal: controller.signal,
       });
     } else {
       throw new Error(`VISION_PROVIDER nao suportado: ${config.visionProvider}`);
     }
 
+    const fatosValidados = validarFatos(fatos, selecionados);
+    if (videoTruncado) {
+      fatosValidados.observacao = `${fatosValidados.observacao} Video truncado para analise.`;
+    }
+
     return {
-      fatos: validarFatos(fatos, selecionados),
+      fatos: fatosValidados,
       provider: config.visionProvider,
       model: config.visionModel,
       duracao_ms: Date.now() - inicio,
       frames_enviados: selecionados.length,
+      video_enviado: video,
+      video_truncado: videoTruncado,
     };
   } catch (error) {
     error.frames_enviados = selecionados.length;
@@ -407,7 +430,7 @@ async function analisarFrames({ frames }) {
 }
 
 module.exports = {
-  analisarFrames,
+  analisarVideo,
   authHeadersPorProvedor,
   selecionarAmostra,
   selecionarAmostraComIndices,

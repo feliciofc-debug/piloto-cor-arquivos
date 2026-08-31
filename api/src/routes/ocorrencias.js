@@ -229,6 +229,8 @@ async function ocorrenciasRoutes(fastify) {
          o.protocolo_escolhido_id,
          o.frame_principal,
          o.frames,
+         o.video_analise,
+         o.video_analise_truncado,
          o.operador_id,
          o.decisao,
          o.decisao_obs,
@@ -560,9 +562,10 @@ async function ocorrenciasRoutes(fastify) {
           uploadRelativo,
           destinoRelativo,
           JSON.stringify({
-            fps: 1,
-            max_frames: 40,
-            largura: 768,
+            frames_evidencia: config.visionFramesEvidencia,
+            video_max_mb: config.videoMaxMb,
+            video_max_seg: config.videoMaxSeg,
+            video_reducao_max: config.videoReducaoMax,
           }),
         ],
       );

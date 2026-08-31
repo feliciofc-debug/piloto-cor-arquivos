@@ -49,6 +49,10 @@ const config = {
   visionApiPath: env('VISION_API_PATH', '/chat/completions'),
   visionTimeoutMs: Number(env('VISION_TIMEOUT_MS', '60000')),
   visionMaxFrames: Number(env('VISION_MAX_FRAMES', '40')),
+  videoMaxMb: Number(env('VIDEO_MAX_MB', '18')),
+  visionFramesEvidencia: Number(env('VISION_FRAMES_EVIDENCIA', '6')),
+  videoMaxSeg: Number(env('VIDEO_MAX_SEG', '60')),
+  videoReducaoMax: Number(env('VIDEO_REDUCAO_MAX', '480')),
   whatsappPhoneNumberId: env('WHATSAPP_PHONE_NUMBER_ID'),
   whatsappToken: env('WHATSAPP_TOKEN'),
   whatsappDestino: env('WHATSAPP_DESTINO'),
@@ -81,6 +85,22 @@ function assertServerConfig() {
 
   if (!Number.isInteger(config.visionMaxFrames) || config.visionMaxFrames <= 0) {
     throw new Error('VISION_MAX_FRAMES precisa ser um numero inteiro positivo.');
+  }
+
+  if (!Number.isFinite(config.videoMaxMb) || config.videoMaxMb <= 0) {
+    throw new Error('VIDEO_MAX_MB precisa ser um numero positivo.');
+  }
+
+  if (!Number.isInteger(config.visionFramesEvidencia) || config.visionFramesEvidencia <= 0) {
+    throw new Error('VISION_FRAMES_EVIDENCIA precisa ser um numero inteiro positivo.');
+  }
+
+  if (!Number.isInteger(config.videoMaxSeg) || config.videoMaxSeg <= 0) {
+    throw new Error('VIDEO_MAX_SEG precisa ser um numero inteiro positivo.');
+  }
+
+  if (!Number.isInteger(config.videoReducaoMax) || config.videoReducaoMax <= 0) {
+    throw new Error('VIDEO_REDUCAO_MAX precisa ser um numero inteiro positivo.');
   }
 
   if (!Number.isInteger(config.whatsappTimeoutMs) || config.whatsappTimeoutMs <= 0) {

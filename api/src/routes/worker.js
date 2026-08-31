@@ -171,6 +171,15 @@ async function workerRoutes(fastify) {
           ? body.frames.filter((frame) => typeof frame === 'string' && frame.length > 0)
           : [];
         const framePrincipal = frames[0] || null;
+        const videoAnalise = typeof body.video_analise === 'string' && body.video_analise.trim()
+          ? body.video_analise.trim()
+          : null;
+        const videoTruncado = body.video_truncado === true;
+
+        if (!videoAnalise) {
+          await client.query('rollback');
+          return reply.code(400).send({ error: 'video_analise obrigatorio.' });
+        }
 
         await client.query(
           `update frame_jobs
@@ -185,12 +194,16 @@ async function workerRoutes(fastify) {
         await client.query(
           `update ocorrencias
            set frames = $2::jsonb,
-               frame_principal = $3
+               frame_principal = $3,
+               video_analise = $4,
+               video_analise_truncado = $5
            where id = $1`,
           [
             job.ocorrencia_id,
             JSON.stringify(frames),
             framePrincipal,
+            videoAnalise,
+            videoTruncado,
           ],
         );
 
@@ -203,6 +216,8 @@ async function workerRoutes(fastify) {
             JSON.stringify({
               job_id: job.id,
               frames,
+              video_analise: videoAnalise,
+              video_truncado: videoTruncado,
               duracao_ms: body.duracao_ms || null,
             }),
           ],
@@ -221,6 +236,24 @@ async function workerRoutes(fastify) {
       const erro = typeof body.erro === 'string' && body.erro.trim()
         ? body.erro.trim()
         : 'erro desconhecido no worker';
+
+      const frames = Array.isArray(body.frames)
+        ? body.frames.filter((frame) => typeof frame === 'string' && frame.length > 0)
+        : [];
+
+      if (frames.length > 0) {
+        await client.query(
+          `update ocorrencias
+           set frames = $2::jsonb,
+               frame_principal = $3
+           where id = $1`,
+          [
+            job.ocorrencia_id,
+            JSON.stringify(frames),
+            frames[0],
+          ],
+        );
+      }
 
       const status = await concluirComErro(client, job, erro, workerId);
       await client.query('commit');

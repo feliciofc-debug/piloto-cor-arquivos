@@ -32,6 +32,8 @@ const fatoLabels = {
   agua_na_pista: 'Água na pista',
   veiculo_parado: 'Veículo parado',
   veiculos_parados: 'Veículos parados',
+  veiculos_estacionados: 'Veículos estacionados',
+  veiculos_parados_na_pista: 'Veículos parados na pista',
   veiculos_em_movimento: 'Veículos em movimento',
   bloqueio_via: 'Bloqueio da via',
   confianca: 'Confiança',
@@ -73,7 +75,8 @@ const camposPorTipoEvidencia = {
 };
 
 const estadoVeiculoLabels = {
-  parado: 'parado',
+  estacionado: 'estacionado',
+  parado_na_pista: 'parado na pista',
   em_movimento: 'em movimento',
   indeterminado: 'indeterminado',
 };
@@ -1300,7 +1303,7 @@ function OcorrenciaDetalhePage({ id }) {
                 {tipoEvidenciaLabels[grupo.tipo] || 'Evidências'} ({grupo.itens.length})
                 {grupo.tipo === 'veiculo' && ocorrencia.fatos ? (
                   <span>
-                    {' '} - parados {ocorrencia.fatos.veiculos_parados ?? 0}, em movimento {ocorrencia.fatos.veiculos_em_movimento ?? 0}
+                    {' '} - estacionados {ocorrencia.fatos.veiculos_estacionados ?? 0}, parados na pista {ocorrencia.fatos.veiculos_parados_na_pista ?? 0}, em movimento {ocorrencia.fatos.veiculos_em_movimento ?? 0}
                   </span>
                 ) : null}
               </h2>
