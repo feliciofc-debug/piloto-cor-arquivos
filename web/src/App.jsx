@@ -385,6 +385,10 @@ function protocoloPrincipal(protocolos) {
     })[0] || null;
 }
 
+function protocoloId(protocolo) {
+  return protocolo?.protocolo_id || protocolo?.id || null;
+}
+
 function tiposRelacionadosAoProtocolo(protocolo) {
   const campos = camposDosCriterios(protocolo?.criterios);
   const tipos = new Set();
@@ -768,6 +772,8 @@ function DecisionPanel({
   setAcionamentos,
   orientacao,
   setOrientacao,
+  protocoloEscolhidoId,
+  frameEscolhido,
 }) {
   const [motivo, setMotivo] = useState('');
   const [novoOrgao, setNovoOrgao] = useState('');
@@ -895,6 +901,8 @@ function DecisionPanel({
             onClick={() => decidir('aprovada', {
               acionamentos_definidos: acionamentosAtivos.map(({ orgao, prioridade }) => ({ orgao, prioridade })),
               orientacao_campo: orientacao,
+              protocolo_escolhido_id: protocoloEscolhidoId,
+              frame_escolhido: frameEscolhido,
             })}
           >
             Aprovar
@@ -992,6 +1000,8 @@ function OcorrenciaDetalhePage({ id }) {
   const [imagemAmpliada, setImagemAmpliada] = useState('');
   const [framesDestacados, setFramesDestacados] = useState([]);
   const [avisoEvidencia, setAvisoEvidencia] = useState('');
+  const [protocoloSelecionadoId, setProtocoloSelecionadoId] = useState('');
+  const [frameEscolhido, setFrameEscolhido] = useState('');
 
   const carregar = useCallback(async () => {
     try {
@@ -1019,28 +1029,42 @@ function OcorrenciaDetalhePage({ id }) {
     return () => window.clearInterval(intervalId);
   }, [carregar, detalhe?.ocorrencia?.status]);
 
-  useEffect(() => {
-    if (!detalhe) {
-      return;
-    }
-
-    const definidos = Array.isArray(detalhe.ocorrencia.acionamentos_definidos)
-      && detalhe.ocorrencia.acionamentos_definidos.length > 0
-      ? normalizarAcionamentosUi(detalhe.ocorrencia.acionamentos_definidos)
-      : acionamentosSugeridosUi(detalhe.ocorrencia.protocolos_casados);
-
-    // oxlint-disable-next-line react/set-state-in-effect
-    setAcionamentos(definidos);
-    // oxlint-disable-next-line react/set-state-in-effect
-    setOrientacao(detalhe.ocorrencia.orientacao_campo || '');
-  }, [detalhe]);
-
   const sequenciaFrames = useMemo(() => framesDaOcorrencia(detalhe?.ocorrencia?.frames), [detalhe]);
 
   const evidencias = useMemo(() => (
     detalhe ? montarEvidencias(detalhe.ocorrencia) : []
   ), [detalhe]);
   const gruposEvidencia = useMemo(() => agruparEvidencias(evidencias), [evidencias]);
+
+  useEffect(() => {
+    if (!detalhe) {
+      return;
+    }
+
+    const principalAtual = protocoloPrincipal(detalhe.ocorrencia.protocolos_casados);
+    const protocolos = Array.isArray(detalhe.ocorrencia.protocolos_casados)
+      ? detalhe.ocorrencia.protocolos_casados
+      : [];
+    const protocoloInicialId = detalhe.ocorrencia.protocolo_escolhido_id || protocoloId(principalAtual) || '';
+    const protocoloInicial = protocolos.find((protocolo) => protocoloId(protocolo) === protocoloInicialId) || principalAtual;
+    const frameSugeridoInicial = evidenciasDoProtocolo(evidencias, protocoloInicial)[0]?.frame
+      || detalhe.ocorrencia.frame_principal
+      || framesDaOcorrencia(detalhe.ocorrencia.frames)[0]
+      || '';
+    const definidos = Array.isArray(detalhe.ocorrencia.acionamentos_definidos)
+      && detalhe.ocorrencia.acionamentos_definidos.length > 0
+      ? normalizarAcionamentosUi(detalhe.ocorrencia.acionamentos_definidos)
+      : acionamentosSugeridosUi(protocoloInicial ? [protocoloInicial] : []);
+
+    // oxlint-disable-next-line react/set-state-in-effect
+    setProtocoloSelecionadoId(protocoloInicialId);
+    // oxlint-disable-next-line react/set-state-in-effect
+    setFrameEscolhido(detalhe.ocorrencia.frame_escolhido || frameSugeridoInicial);
+    // oxlint-disable-next-line react/set-state-in-effect
+    setAcionamentos(definidos);
+    // oxlint-disable-next-line react/set-state-in-effect
+    setOrientacao(detalhe.ocorrencia.orientacao_campo || '');
+  }, [detalhe, evidencias]);
 
   function destacarProtocolo(protocolo) {
     const campos = camposDosCriterios(protocolo.criterios);
@@ -1067,6 +1091,20 @@ function OcorrenciaDetalhePage({ id }) {
     }, 0);
   }
 
+  function selecionarProtocolo(protocolo) {
+    const idSelecionado = protocoloId(protocolo) || '';
+    const evidenciasRelacionadas = evidenciasDoProtocolo(evidencias, protocolo);
+    const frameSugerido = evidenciasRelacionadas[0]?.frame
+      || detalhe?.ocorrencia?.frame_principal
+      || sequenciaFrames[0]
+      || '';
+
+    setProtocoloSelecionadoId(idSelecionado);
+    setFrameEscolhido(frameSugerido);
+    setAcionamentos(acionamentosSugeridosUi([protocolo]));
+    destacarProtocolo(protocolo);
+  }
+
   if (carregando) {
     return (
       <AppShell>
@@ -1088,14 +1126,15 @@ function OcorrenciaDetalhePage({ id }) {
 
   const { ocorrencia } = detalhe;
   const principal = protocoloPrincipal(ocorrencia.protocolos_casados);
-  const evidenciasPrincipal = evidenciasDoProtocolo(evidencias, principal);
-  const frameVeredito = evidenciasPrincipal[0]?.frame
+  const protocolosCasados = Array.isArray(ocorrencia.protocolos_casados) ? ocorrencia.protocolos_casados : [];
+  const protocoloSelecionado = protocolosCasados.find((protocolo) => protocoloId(protocolo) === protocoloSelecionadoId) || principal;
+  const evidenciasSelecionadas = evidenciasDoProtocolo(evidencias, protocoloSelecionado);
+  const frameSugerido = evidenciasSelecionadas[0]?.frame
     || ocorrencia.frame_principal
     || sequenciaFrames[0]
     || '';
-  const demaisProtocolos = (Array.isArray(ocorrencia.protocolos_casados)
-    ? ocorrencia.protocolos_casados
-    : []).filter((protocolo) => protocolo !== principal);
+  const frameVeredito = frameEscolhido || frameSugerido;
+  const demaisProtocolos = protocolosCasados.filter((protocolo) => protocoloId(protocolo) !== protocoloId(protocoloSelecionado));
   const fatosAcionadores = [
     ['pessoa_na_pista', 'Pessoa na pista'],
     ['veiculo_parado', 'Veículo parado'],
@@ -1133,14 +1172,40 @@ function OcorrenciaDetalhePage({ id }) {
           </div>
           <div className="verdict-content">
             <p className="eyebrow">Veredito</p>
-            {principal ? (
+            {protocoloSelecionado ? (
               <>
-                <h2>{principal.codigo} - {principal.nome}</h2>
-                <p>Prioridade {principal.prioridade}</p>
+                <button
+                  type="button"
+                  className="selected-protocol-button"
+                  onClick={() => selecionarProtocolo(protocoloSelecionado)}
+                >
+                  {protocoloSelecionado.codigo} - {protocoloSelecionado.nome}
+                </button>
+                <p>Prioridade {protocoloSelecionado.prioridade}</p>
               </>
             ) : (
               <h2>Nenhum protocolo acionado</h2>
             )}
+            {sequenciaFrames.length > 0 ? (
+              <div className="verdict-thumbs">
+                {sequenciaFrames.map((frame, index) => (
+                  <button
+                    type="button"
+                    key={frame}
+                    className={[
+                      'verdict-thumb',
+                      frame === frameEscolhido ? 'selected' : '',
+                      frame === frameSugerido ? 'suggested' : '',
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => setFrameEscolhido(frame)}
+                    aria-label={`Escolher frame ${index + 1}`}
+                  >
+                    <img src={`/api/midia/${frame}`} alt={`Miniatura do frame ${index + 1}`} />
+                    <span>{index + 1}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <DecisionPanel
               detalhe={detalhe}
               onDecidido={carregar}
@@ -1148,6 +1213,8 @@ function OcorrenciaDetalhePage({ id }) {
               setAcionamentos={setAcionamentos}
               orientacao={orientacao}
               setOrientacao={setOrientacao}
+              protocoloEscolhidoId={protocoloId(protocoloSelecionado)}
+              frameEscolhido={frameEscolhido}
             />
           </div>
         </section>
@@ -1162,7 +1229,7 @@ function OcorrenciaDetalhePage({ id }) {
                 type="button"
                 className="protocol-chip"
                 key={protocolo.protocolo_id || protocolo.codigo}
-                onClick={() => destacarProtocolo(protocolo)}
+                onClick={() => selecionarProtocolo(protocolo)}
               >
                 {protocolo.codigo} - {protocolo.nome}
               </button>

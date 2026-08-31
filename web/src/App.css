@@ -445,6 +445,63 @@ dd {
   margin: 0;
 }
 
+.selected-protocol-button {
+  background: #e7f0fa;
+  border: 2px solid var(--cor-blue);
+  border-radius: 14px;
+  color: var(--cor-blue);
+  cursor: pointer;
+  font: inherit;
+  font-size: clamp(1.4rem, 3vw, 2.2rem);
+  font-weight: 800;
+  padding: 14px;
+  text-align: left;
+}
+
+.verdict-thumbs {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.verdict-thumb {
+  background: #f6f9fc;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  overflow: hidden;
+  padding: 0;
+  position: relative;
+}
+
+.verdict-thumb img {
+  aspect-ratio: 16 / 9;
+  display: block;
+  object-fit: cover;
+  width: 100%;
+}
+
+.verdict-thumb span {
+  background: rgba(16, 34, 56, 0.85);
+  border-radius: 999px;
+  bottom: 5px;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 2px 7px;
+  position: absolute;
+  right: 5px;
+}
+
+.verdict-thumb.suggested {
+  border-color: #8daed4;
+}
+
+.verdict-thumb.selected {
+  border-color: var(--cor-blue);
+  box-shadow: inset 0 0 0 2px rgba(19, 58, 107, 0.24);
+}
+
 .compact-section {
   display: grid;
   gap: 14px;
@@ -930,6 +987,7 @@ dd {
   .evidence-row,
   .inventory-row,
   .verdict-card,
+  .verdict-thumbs,
   .frame-navigation,
   .metric-numbers.two,
   .metrics-grid,

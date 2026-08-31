@@ -130,6 +130,39 @@ function acionamentosSugeridos(protocolosCasados) {
   return normalizarAcionamentos(acionamentos);
 }
 
+function acionamentosSugeridosDoProtocolo(protocolo) {
+  if (!protocolo || protocolo.acionamentos_suprimidos) {
+    return [];
+  }
+
+  const lista = Array.isArray(protocolo.acionamentos_sugeridos)
+    ? protocolo.acionamentos_sugeridos
+    : protocolo.acionamentos;
+
+  return normalizarAcionamentos(lista);
+}
+
+function prioridadeProtocolo(protocolo) {
+  const prioridade = Number(protocolo?.prioridade);
+  return Number.isFinite(prioridade) ? prioridade : Number.MAX_SAFE_INTEGER;
+}
+
+function protocoloPrincipal(protocolosCasados) {
+  return [...(Array.isArray(protocolosCasados) ? protocolosCasados : [])]
+    .sort((a, b) => {
+      const diff = prioridadeProtocolo(a) - prioridadeProtocolo(b);
+      if (diff !== 0) {
+        return diff;
+      }
+
+      return String(a.codigo || '').localeCompare(String(b.codigo || ''), 'pt-BR');
+    })[0] || null;
+}
+
+function protocoloId(protocolo) {
+  return protocolo?.protocolo_id || protocolo?.id || null;
+}
+
 function acionamentosIguais(sugeridos, definidos) {
   // Divergencia e qualquer diferenca no conjunto de pares orgao+prioridade.
   // A ordem e ignorada. Orgao removido, acrescentado ou com prioridade
@@ -228,6 +261,7 @@ async function ocorrenciasRoutes(fastify) {
          o.protocolos_casados,
          o.protocolo_escolhido_id,
          o.frame_principal,
+         o.frame_escolhido,
          o.frames,
          o.video_analise,
          o.video_analise_truncado,
@@ -294,6 +328,8 @@ async function ocorrenciasRoutes(fastify) {
     const decisao = textoOuNulo(body.decisao);
     const decisaoObs = textoOuNulo(body.decisao_obs);
     const orientacaoCampo = textoOuNulo(body.orientacao_campo);
+    const protocoloEscolhidoId = textoOuNulo(body.protocolo_escolhido_id);
+    const frameEscolhido = textoOuNulo(body.frame_escolhido);
     const recebeuAcionamentos = Object.hasOwn(body, 'acionamentos_definidos');
     let acionamentosInformados = null;
 
@@ -307,6 +343,10 @@ async function ocorrenciasRoutes(fastify) {
 
     if (decisao === 'descartada' && !decisaoObs) {
       return reply.code(400).send({ error: 'Motivo obrigatorio para descarte.' });
+    }
+
+    if (protocoloEscolhidoId && !uuidRegex.test(protocoloEscolhidoId)) {
+      return reply.code(400).send({ error: 'Id de protocolo invalido.' });
     }
 
     if (recebeuAcionamentos) {
@@ -323,7 +363,7 @@ async function ocorrenciasRoutes(fastify) {
       await client.query('begin');
 
       const ocorrenciaAtualResult = await client.query(
-        `select id, status, protocolos_casados
+        `select id, status, protocolos_casados, frames
          from ocorrencias
          where id = $1
          for update`,
@@ -347,9 +387,35 @@ async function ocorrenciasRoutes(fastify) {
       let decisaoFinal = decisao;
       const statusFinal = decisao === 'descartada' ? 'descartada' : 'aprovada';
       let acionamentosDefinidos = [];
+      let protocoloEscolhido = null;
+      let frameEscolhidoValidado = null;
 
       if (decisao === 'aprovada') {
-        const sugeridos = acionamentosSugeridos(ocorrenciaAtual.protocolos_casados);
+        const principal = protocoloPrincipal(ocorrenciaAtual.protocolos_casados);
+        const protocolosCasados = Array.isArray(ocorrenciaAtual.protocolos_casados)
+          ? ocorrenciaAtual.protocolos_casados
+          : [];
+        protocoloEscolhido = protocoloEscolhidoId
+          ? protocolosCasados.find((protocolo) => protocoloId(protocolo) === protocoloEscolhidoId)
+          : principal;
+
+        if (protocoloEscolhidoId && !protocoloEscolhido) {
+          await client.query('rollback');
+          return reply.code(400).send({ error: 'Protocolo escolhido nao esta entre os protocolos casados da ocorrencia.' });
+        }
+
+        if (frameEscolhido) {
+          const frames = Array.isArray(ocorrenciaAtual.frames) ? ocorrenciaAtual.frames : [];
+          if (!frames.includes(frameEscolhido)) {
+            await client.query('rollback');
+            return reply.code(400).send({ error: 'Frame escolhido nao pertence a ocorrencia.' });
+          }
+          frameEscolhidoValidado = frameEscolhido;
+        }
+
+        const sugeridos = protocoloEscolhido
+          ? acionamentosSugeridosDoProtocolo(protocoloEscolhido)
+          : acionamentosSugeridos(ocorrenciaAtual.protocolos_casados);
         acionamentosDefinidos = recebeuAcionamentos ? acionamentosInformados : sugeridos;
 
         if (acionamentosDefinidos.length === 0) {
@@ -357,7 +423,11 @@ async function ocorrenciasRoutes(fastify) {
           return reply.code(400).send({ error: 'Informe ao menos um acionamento para aprovar.' });
         }
 
-        decisaoFinal = acionamentosIguais(sugeridos, acionamentosDefinidos)
+        const trocouProtocolo = protocoloEscolhido
+          && principal
+          && protocoloId(protocoloEscolhido) !== protocoloId(principal);
+
+        decisaoFinal = !trocouProtocolo && acionamentosIguais(sugeridos, acionamentosDefinidos)
           ? 'aprovada'
           : 'ajustada';
       }
@@ -369,9 +439,10 @@ async function ocorrenciasRoutes(fastify) {
            operador_id = $3,
            decisao = $4,
            decisao_obs = $5,
-           protocolo_escolhido_id = null,
-           acionamentos_definidos = $6::jsonb,
-           orientacao_campo = $7,
+           protocolo_escolhido_id = $6,
+           acionamentos_definidos = $7::jsonb,
+           orientacao_campo = $8,
+           frame_escolhido = $9,
            decidida_em = now()
          where id = $1
          returning
@@ -382,6 +453,7 @@ async function ocorrenciasRoutes(fastify) {
            protocolo_escolhido_id,
            acionamentos_definidos,
            orientacao_campo,
+           frame_escolhido,
            operador_id,
            decidida_em`,
         [
@@ -390,8 +462,10 @@ async function ocorrenciasRoutes(fastify) {
           request.usuario.id,
           decisaoFinal,
           decisaoObs,
+          protocoloEscolhido ? protocoloId(protocoloEscolhido) : null,
           JSON.stringify(acionamentosDefinidos),
           orientacaoCampo,
+          frameEscolhidoValidado,
         ],
       );
 

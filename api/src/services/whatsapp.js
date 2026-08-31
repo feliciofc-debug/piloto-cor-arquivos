@@ -176,6 +176,16 @@ function selecionarProtocoloCasado(protocolosCasados) {
 
 function selecionarProtocoloAplicado(ocorrencia) {
   if (ocorrencia.decisao === 'aprovada' || ocorrencia.decisao === 'ajustada') {
+    if (ocorrencia.protocolo_escolhido_id && Array.isArray(ocorrencia.protocolos_casados)) {
+      const escolhido = ocorrencia.protocolos_casados.find((protocolo) => (
+        protocolo.protocolo_id === ocorrencia.protocolo_escolhido_id
+      ));
+
+      if (escolhido) {
+        return escolhido;
+      }
+    }
+
     return selecionarProtocoloCasado(ocorrencia.protocolos_casados);
   }
 
@@ -399,12 +409,13 @@ async function notificarOcorrenciaDecidida(ocorrenciaId, log = console) {
        o.decisao,
        o.fatos,
        o.protocolos_casados,
+       o.protocolo_escolhido_id,
        o.acionamentos_definidos,
        o.orientacao_campo,
        o.frame_principal,
+       o.frame_escolhido,
        o.frames,
        c.tunel,
-       null as protocolo_escolhido_id
      from ocorrencias o
      left join cameras c on c.id = o.camera_id
      where o.id = $1
@@ -435,7 +446,7 @@ async function notificarOcorrenciaDecidida(ocorrenciaId, log = console) {
 
   const texto = montarMensagem({ ocorrencia, protocolo, acionamentos });
   const destinoMascarado = mascararDestino(config.whatsappDestino);
-  const frameEvidencia = selecionarFrameEvidencia(ocorrencia, protocolo);
+  const frameEvidencia = ocorrencia.frame_escolhido || selecionarFrameEvidencia(ocorrencia, protocolo);
 
   try {
     let envio;
