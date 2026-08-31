@@ -9,6 +9,7 @@ const camposFatoPermitidos = new Set([
   'veiculos_estacionados',
   'veiculos_parados_na_pista',
   'veiculos_em_movimento',
+  'veiculos_em_contato',
   'pessoa_na_pista',
   'pessoa_ao_solo',
   'fogo',
@@ -16,6 +17,9 @@ const camposFatoPermitidos = new Set([
   'carga_derramada',
   'agua_na_pista',
   'veiculo_parado',
+  'dano_visivel_em_veiculo',
+  'destrocos_na_pista',
+  'veiculo_fora_de_posicao',
   'bloqueio_via',
 ]);
 
@@ -27,6 +31,7 @@ const camposNumericos = new Set([
   'veiculos_estacionados',
   'veiculos_parados_na_pista',
   'veiculos_em_movimento',
+  'veiculos_em_contato',
 ]);
 
 const camposBooleanos = new Set([
@@ -37,6 +42,9 @@ const camposBooleanos = new Set([
   'carga_derramada',
   'agua_na_pista',
   'veiculo_parado',
+  'dano_visivel_em_veiculo',
+  'destrocos_na_pista',
+  'veiculo_fora_de_posicao',
 ]);
 
 const valoresBloqueioVia = new Set(['nenhum', 'parcial', 'total']);

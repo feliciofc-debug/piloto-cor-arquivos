@@ -15,6 +15,10 @@ const visionSchema = {
     'carga_derramada',
     'agua_na_pista',
     'veiculo_parado',
+    'veiculos_em_contato',
+    'dano_visivel_em_veiculo',
+    'destrocos_na_pista',
+    'veiculo_fora_de_posicao',
     'veiculos_estacionados',
     'veiculos_parados_na_pista',
     'veiculos_em_movimento',
@@ -42,6 +46,10 @@ const visionSchema = {
     carga_derramada: { type: 'boolean' },
     agua_na_pista: { type: 'boolean' },
     veiculo_parado: { type: 'boolean' },
+    veiculos_em_contato: { type: 'integer', minimum: 0 },
+    dano_visivel_em_veiculo: { type: 'boolean' },
+    destrocos_na_pista: { type: 'boolean' },
+    veiculo_fora_de_posicao: { type: 'boolean' },
     veiculos_estacionados: { type: 'integer', minimum: 0 },
     veiculos_parados_na_pista: { type: 'integer', minimum: 0 },
     veiculos_em_movimento: { type: 'integer', minimum: 0 },
@@ -53,7 +61,7 @@ const visionSchema = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['frame', 'tipo', 'descricao', 'estado'],
+        required: ['frame', 'tipo', 'descricao', 'estado', 'subtipo'],
         properties: {
           frame: { type: 'integer', minimum: 0 },
           tipo: {
@@ -61,6 +69,15 @@ const visionSchema = {
             enum: ['veiculo', 'pessoa', 'fogo', 'fumaca', 'agua', 'carga', 'outro'],
           },
           descricao: { type: 'string' },
+          subtipo: {
+            anyOf: [
+              {
+                type: 'string',
+                enum: ['carro', 'taxi', 'van', 'caminhao', 'onibus', 'motocicleta', 'autopropelido', 'bicicleta', 'outro'],
+              },
+              { type: 'null' },
+            ],
+          },
           estado: {
             anyOf: [
               { type: 'string', enum: ['estacionado', 'parado_na_pista', 'em_movimento', 'indeterminado'] },
@@ -85,7 +102,10 @@ const prompt = [
   'Em caso de duvida sobre dois elementos ou o mesmo elemento em momentos diferentes, conte como um e registre a duvida na observacao.',
   'E preferivel subcontar a inflar a cena.',
   'Conte cada veiculo unico visivel ao longo de toda a sequencia, incluindo os que aparecem em apenas alguns quadros.',
+  'A lista frame_evidencia deve conter um item para cada veiculo contado; se veiculos.moto = 2, deve haver 2 evidencias de subtipo motocicleta.',
+  'Se veiculos.carro = 8, deve haver 8 evidencias de carro, taxi ou van quando esses elementos forem classificados como carro.',
   'Para cada veiculo observado, determine se esta estacionado, parado na pista, em movimento ou indeterminado.',
+  'Caminhao e veiculo de carga pesada; van, furgao e utilitario de entrega contam como carro, nao como caminhao.',
   'Veiculo estacionado fora da faixa de rolamento nao conta como veiculo_parado.',
   'Veiculo parado sobre faixa de rolamento conta como veiculo_parado.',
   'veiculo_parado deve ser true somente quando veiculos_parados_na_pista for maior que zero.',
@@ -96,12 +116,20 @@ const prompt = [
   'Conte cada pessoa unica visivel, mesmo que apareca em poucos quadros.',
   'pessoa_na_pista refere-se exclusivamente a pessoa na faixa de rolamento.',
   'Pessoa em calcada, passeio, canteiro ou area de seguranca nao conta como pessoa_na_pista.',
+  'Distingua calcada e pista por meio-fio ou guia, mudanca de textura ou cor do piso e alinhamento com a trajetoria dos veiculos em movimento.',
+  'Para cada pessoa em frame_evidencia, a descricao deve declarar explicitamente se esta na faixa de rolamento ou fora da pista.',
+  'Em duvida sobre o limite entre calcada e pista, classifique como fora da pista e registre a duvida na observacao.',
   'Na observacao, descreva a cena com detalhe: quantos veiculos, onde estao, quantas pessoas e o que fazem.',
+  'Relate veiculos_em_contato apenas quando veiculos estiverem encostados de forma anormal.',
+  'Relate dano_visivel_em_veiculo apenas para amassado, deformacao, vidro quebrado ou dano aparente.',
+  'Relate destrocos_na_pista apenas para pecas, cacos ou fragmentos visiveis na pista.',
+  'Relate veiculo_fora_de_posicao para veiculo atravessado, contra o fluxo, capotado ou fora da orientacao esperada.',
+  'Nao conclua que houve acidente; registre apenas fatos observaveis para a regra SQL decidir.',
   'Para frame_evidencia, use indice base 0 da lista de frames de evidencia enviada junto do video.',
   'frame_evidencia deve ser uma lista com um item para cada elemento unico relevante observado, nao um item por aparicao e nao um item por fato.',
   'Se o mesmo elemento aparece em varios frames, escolha o frame em que ele esta mais nitido.',
   'A descricao deve localizar o elemento na cena para o operador reconhecer qual e.',
-  'Os itens de frame_evidencia sao evidencias representativas para conferencia visual, nao uma auditoria exata da contagem.',
+  'subtipo deve usar apenas: carro, taxi, van, caminhao, onibus, motocicleta, autopropelido, bicicleta, outro; use null se nao souber.',
   'Para item do tipo veiculo, estado e obrigatorio: estacionado, parado_na_pista, em_movimento ou indeterminado.',
   'Para itens que nao sejam veiculo, estado deve ser null.',
   'Para pessoa, a descricao deve dizer se esta na faixa de rolamento ou fora dela.',
@@ -185,6 +213,7 @@ async function frameToContentParts(amostra, indiceEnviado) {
 function validarFrameEvidencia(fatos, amostras) {
   const tiposPermitidos = new Set(['veiculo', 'pessoa', 'fogo', 'fumaca', 'agua', 'carga', 'outro']);
   const estadosVeiculo = new Set(['estacionado', 'parado_na_pista', 'em_movimento', 'indeterminado']);
+  const subtiposPermitidos = new Set(['carro', 'taxi', 'van', 'caminhao', 'onibus', 'motocicleta', 'autopropelido', 'bicicleta', 'outro']);
 
   if (!Array.isArray(fatos.frame_evidencia)) {
     throw new Error('resposta de visao invalida: frame_evidencia deve ser lista');
@@ -207,6 +236,10 @@ function validarFrameEvidencia(fatos, amostras) {
       throw new Error(`resposta de visao invalida: frame_evidencia[${index}].descricao`);
     }
 
+    if (item.subtipo !== null && !subtiposPermitidos.has(item.subtipo)) {
+      throw new Error(`resposta de visao invalida: frame_evidencia[${index}].subtipo`);
+    }
+
     if (item.tipo === 'veiculo') {
       if (!estadosVeiculo.has(item.estado)) {
         throw new Error(`resposta de visao invalida: frame_evidencia[${index}].estado`);
@@ -219,6 +252,7 @@ function validarFrameEvidencia(fatos, amostras) {
       frame: amostras[item.frame].indiceOriginal,
       tipo: item.tipo,
       descricao: item.descricao.trim(),
+      subtipo: item.subtipo,
       estado: item.estado,
     };
   });
@@ -239,6 +273,9 @@ function validarFatos(fatos, amostras = []) {
     'carga_derramada',
     'agua_na_pista',
     'veiculo_parado',
+    'dano_visivel_em_veiculo',
+    'destrocos_na_pista',
+    'veiculo_fora_de_posicao',
   ];
 
   if (!fatos || typeof fatos !== 'object' || Array.isArray(fatos)) {
@@ -278,6 +315,10 @@ function validarFatos(fatos, amostras = []) {
 
   if (!Number.isInteger(fatos.veiculos_em_movimento) || fatos.veiculos_em_movimento < 0) {
     throw new Error('resposta de visao invalida: veiculos_em_movimento');
+  }
+
+  if (!Number.isInteger(fatos.veiculos_em_contato) || fatos.veiculos_em_contato < 0) {
+    throw new Error('resposta de visao invalida: veiculos_em_contato');
   }
 
   if (!['nenhum', 'parcial', 'total'].includes(fatos.bloqueio_via)) {
