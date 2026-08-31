@@ -19,27 +19,6 @@ const statusOptions = [
   { value: 'expirada', label: 'Expirada' },
 ];
 
-const fatoLabels = {
-  carro: 'Carros',
-  moto: 'Motos',
-  caminhao: 'Caminhões',
-  onibus: 'Ônibus',
-  pessoa_na_pista: 'Pessoa na pista',
-  pessoa_ao_solo: 'Pessoa ao solo',
-  fogo: 'Fogo',
-  fumaca: 'Fumaça',
-  carga_derramada: 'Carga derramada',
-  agua_na_pista: 'Água na pista',
-  veiculo_parado: 'Veículo parado',
-  veiculos_parados: 'Veículos parados',
-  veiculos_estacionados: 'Veículos estacionados',
-  veiculos_parados_na_pista: 'Veículos parados na pista',
-  veiculos_em_movimento: 'Veículos em movimento',
-  bloqueio_via: 'Bloqueio da via',
-  confianca: 'Confiança',
-  observacao: 'Observação',
-};
-
 const criterioLabels = {
   'veiculos.carro': 'Carros',
   'veiculos.moto': 'Motos',
@@ -265,28 +244,6 @@ function contarCriterios(criterios) {
   }, 0);
 }
 
-function listaFatos(fatos) {
-  if (!fatos || typeof fatos !== 'object') {
-    return [];
-  }
-
-  const veiculos = fatos.veiculos && typeof fatos.veiculos === 'object'
-    ? Object.entries(fatos.veiculos).map(([key, value]) => ({
-      label: fatoLabels[key] || key,
-      value,
-    }))
-    : [];
-
-  const demais = Object.entries(fatos)
-    .filter(([key]) => key !== 'veiculos' && key !== 'frame_evidencia')
-    .map(([key, value]) => ({
-      label: fatoLabels[key] || key.replaceAll('_', ' '),
-      value,
-    }));
-
-  return [...veiculos, ...demais];
-}
-
 function extrairFrame(item) {
   if (typeof item === 'string') {
     return item;
@@ -299,23 +256,17 @@ function extrairFrame(item) {
   return null;
 }
 
-function normalizarFrames(frames, framePrincipal) {
-  let lista = frames;
-
+function framesDaOcorrencia(frames) {
   if (typeof frames === 'string') {
     try {
-      lista = JSON.parse(frames);
+      const parsed = JSON.parse(frames);
+      return Array.isArray(parsed) ? parsed.map(extrairFrame).filter(Boolean) : [];
     } catch {
-      lista = [];
+      return [];
     }
   }
 
-  const ordenados = [
-    framePrincipal,
-    ...(Array.isArray(lista) ? lista.map(extrairFrame) : []),
-  ].filter(Boolean);
-
-  return Array.from(new Set(ordenados));
+  return Array.isArray(frames) ? frames.map(extrairFrame).filter(Boolean) : [];
 }
 
 function normalizarAcionamentosUi(acionamentos) {
@@ -359,17 +310,6 @@ function acionamentosSugeridosUi(protocolos) {
   return normalizarAcionamentosUi(acionamentos);
 }
 
-function criterioUsaFato(criterios, fato) {
-  if (!criterios || typeof criterios !== 'object') {
-    return false;
-  }
-
-  return ['todos', 'algum', 'nenhum'].some((grupo) => (
-    Array.isArray(criterios[grupo])
-    && criterios[grupo].some((condicao) => condicao?.campo === fato)
-  ));
-}
-
 function camposDosCriterios(criterios) {
   if (!criterios || typeof criterios !== 'object') {
     return [];
@@ -391,21 +331,8 @@ function camposDosCriterios(criterios) {
   return Array.from(new Set(campos));
 }
 
-function protocolosPorFatos(protocolos, fatos) {
-  const relacionados = (Array.isArray(protocolos) ? protocolos : []).filter((protocolo) => (
-    fatos.some((fato) => criterioUsaFato(protocolo.criterios, fato))
-  ));
-
-  return relacionados.length > 0 ? relacionados : (Array.isArray(protocolos) ? protocolos : []);
-}
-
-function protocolosPorTipo(protocolos, tipo) {
-  const campos = camposPorTipoEvidencia[tipo] || [];
-  return protocolosPorFatos(protocolos, campos);
-}
-
 function montarEvidencias(ocorrencia) {
-  const frames = normalizarFrames(ocorrencia.frames, ocorrencia.frame_principal);
+  const frames = framesDaOcorrencia(ocorrencia.frames);
   const evidencias = ocorrencia.fatos?.frame_evidencia;
 
   if (Array.isArray(evidencias)) {
@@ -417,8 +344,6 @@ function montarEvidencias(ocorrencia) {
         tipo: item.tipo,
         descricao: item.descricao,
         estado: item.estado,
-        fatos: [],
-        protocolos: protocolosPorTipo(ocorrencia.protocolos_casados, item.tipo),
         fallback: false,
       }));
 
@@ -427,56 +352,7 @@ function montarEvidencias(ocorrencia) {
     }
   }
 
-  if (!evidencias || typeof evidencias !== 'object' || Array.isArray(evidencias)) {
-    return [{
-      id: 'fallback',
-      frame: ocorrencia.frame_principal || frames[0] || '',
-      tipo: 'outro',
-      descricao: 'Frame principal da ocorrência.',
-      fatos: [],
-      protocolos: Array.isArray(ocorrencia.protocolos_casados) ? ocorrencia.protocolos_casados : [],
-      fallback: true,
-    }];
-  }
-
-  const porFrame = new Map();
-
-  for (const [fato, indice] of Object.entries(evidencias)) {
-    if (!Number.isInteger(indice) || !frames[indice]) {
-      continue;
-    }
-
-    const atual = porFrame.get(indice) || {
-      id: `legado-${indice}`,
-      frame: frames[indice],
-      tipo: 'outro',
-      descricao: 'Evidência registrada em formato anterior.',
-      fatos: [],
-    };
-
-    atual.fatos.push(fato);
-    porFrame.set(indice, atual);
-  }
-
-  const lista = Array.from(porFrame.values()).map((evidencia) => ({
-    ...evidencia,
-    protocolos: protocolosPorFatos(ocorrencia.protocolos_casados, evidencia.fatos),
-    fallback: false,
-  }));
-
-  if (lista.length === 0) {
-    return [{
-      id: 'fallback',
-      frame: ocorrencia.frame_principal || frames[0] || '',
-      tipo: 'outro',
-      descricao: 'Frame principal da ocorrência.',
-      fatos: [],
-      protocolos: Array.isArray(ocorrencia.protocolos_casados) ? ocorrencia.protocolos_casados : [],
-      fallback: true,
-    }];
-  }
-
-  return lista;
+  return [];
 }
 
 function agruparEvidencias(evidencias) {
@@ -491,6 +367,44 @@ function agruparEvidencias(evidencias) {
   }
 
   return Array.from(grupos.entries()).map(([tipo, itens]) => ({ tipo, itens }));
+}
+
+function prioridadeProtocolo(protocolo) {
+  const prioridade = Number(protocolo?.prioridade);
+  return Number.isFinite(prioridade) ? prioridade : Number.MAX_SAFE_INTEGER;
+}
+
+function protocoloPrincipal(protocolos) {
+  return [...(Array.isArray(protocolos) ? protocolos : [])]
+    .sort((a, b) => {
+      const diff = prioridadeProtocolo(a) - prioridadeProtocolo(b);
+      if (diff !== 0) {
+        return diff;
+      }
+      return String(a.codigo || '').localeCompare(String(b.codigo || ''), 'pt-BR');
+    })[0] || null;
+}
+
+function tiposRelacionadosAoProtocolo(protocolo) {
+  const campos = camposDosCriterios(protocolo?.criterios);
+  const tipos = new Set();
+
+  for (const [tipo, camposTipo] of Object.entries(camposPorTipoEvidencia)) {
+    if (campos.some((campo) => camposTipo.includes(campo))) {
+      tipos.add(tipo);
+    }
+  }
+
+  return tipos;
+}
+
+function evidenciasDoProtocolo(evidencias, protocolo) {
+  const tipos = tiposRelacionadosAoProtocolo(protocolo);
+  if (tipos.size === 0) {
+    return [];
+  }
+
+  return evidencias.filter((evidencia) => tipos.has(evidencia.tipo));
 }
 
 function BrandHeader({ compact = false }) {
@@ -1007,9 +921,9 @@ function DecisionPanel({
   );
 }
 
-function EvidenceCard({ evidencia, highlighted, onOpenImage, onProtocolClick }) {
+function EvidenceCard({ evidencia, highlighted, onOpenImage }) {
   return (
-    <article className={highlighted ? 'card evidence-row highlighted' : 'card evidence-row'}>
+    <article className={highlighted ? 'inventory-row highlighted' : 'inventory-row'}>
       {evidencia.frame ? (
         <button
           type="button"
@@ -1031,32 +945,6 @@ function EvidenceCard({ evidencia, highlighted, onOpenImage, onProtocolClick }) 
               Estado: {estadoVeiculoLabels[evidencia.estado] || 'não informado'}
             </p>
           ) : null}
-          {evidencia.fatos.length > 0 ? (
-            <div className="compact-list">
-              {evidencia.fatos.map((fato) => (
-                <span key={fato}>{fatoLabels[fato] || fato.replaceAll('_', ' ')}</span>
-              ))}
-            </div>
-          ) : (
-            <p className="muted">Ocorrência sem frame_evidencia. Exibindo o frame principal.</p>
-          )}
-        </div>
-        <div>
-          <h3>Protocolos aplicáveis segundo a regra</h3>
-          <div className="protocol-list compact-list">
-            {evidencia.protocolos.length > 0 ? evidencia.protocolos.map((protocolo) => (
-              <button
-                type="button"
-                className="protocol-chip"
-                key={`${evidencia.frame}-${protocolo.protocolo_id || protocolo.codigo}`}
-                onClick={() => onProtocolClick(protocolo)}
-              >
-                {protocolo.codigo} - {protocolo.nome}
-              </button>
-            )) : (
-              <span>Nenhum protocolo relacionado a esta evidência</span>
-            )}
-          </div>
         </div>
       </div>
     </article>
@@ -1096,7 +984,6 @@ function ImageModal({ frame, onClose }) {
 
 function OcorrenciaDetalhePage({ id }) {
   const [detalhe, setDetalhe] = useState(null);
-  const [frameAtual, setFrameAtual] = useState('');
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(true);
   const [mostrarTodosFrames, setMostrarTodosFrames] = useState(false);
@@ -1110,8 +997,6 @@ function OcorrenciaDetalhePage({ id }) {
     try {
       const data = await api(`/api/ocorrencias/${id}`);
       setDetalhe(data);
-      const frames = normalizarFrames(data.ocorrencia.frames, data.ocorrencia.frame_principal);
-      setFrameAtual((atual) => (atual && frames.includes(atual) ? atual : frames[0] || ''));
       setErro('');
     } catch (error) {
       setErro(error.message);
@@ -1150,40 +1035,15 @@ function OcorrenciaDetalhePage({ id }) {
     setOrientacao(detalhe.ocorrencia.orientacao_campo || '');
   }, [detalhe]);
 
-  const sequenciaFrames = useMemo(() => (
-    normalizarFrames(detalhe?.ocorrencia?.frames, detalhe?.ocorrencia?.frame_principal)
-  ), [detalhe]);
+  const sequenciaFrames = useMemo(() => framesDaOcorrencia(detalhe?.ocorrencia?.frames), [detalhe]);
 
-  const frameIndex = sequenciaFrames.indexOf(frameAtual);
-  const framePosicao = frameIndex >= 0 ? frameIndex : 0;
-  const totalFrames = sequenciaFrames.length;
   const evidencias = useMemo(() => (
     detalhe ? montarEvidencias(detalhe.ocorrencia) : []
   ), [detalhe]);
   const gruposEvidencia = useMemo(() => agruparEvidencias(evidencias), [evidencias]);
 
-  const irParaFrame = useCallback((direcao) => {
-    setFrameAtual((atual) => {
-      if (sequenciaFrames.length === 0) {
-        return '';
-      }
-
-      const indiceAtual = Math.max(0, sequenciaFrames.indexOf(atual));
-      const proximoIndice = Math.min(
-        sequenciaFrames.length - 1,
-        Math.max(0, indiceAtual + direcao),
-      );
-
-      return sequenciaFrames[proximoIndice];
-    });
-  }, [sequenciaFrames]);
-
   function destacarProtocolo(protocolo) {
-    const evidenciasPorFato = detalhe?.ocorrencia?.fatos?.frame_evidencia;
-    const frames = normalizarFrames(detalhe?.ocorrencia?.frames, detalhe?.ocorrencia?.frame_principal);
     const campos = camposDosCriterios(protocolo.criterios);
-    const framesEncontrados = [];
-    const semEvidencia = [];
 
     if (campos.length === 0) {
       setFramesDestacados([]);
@@ -1191,75 +1051,21 @@ function OcorrenciaDetalhePage({ id }) {
       return;
     }
 
-    if (Array.isArray(evidenciasPorFato)) {
-      const tiposRelacionados = new Set();
-      for (const [tipo, camposTipo] of Object.entries(camposPorTipoEvidencia)) {
-        if (campos.some((campo) => camposTipo.includes(campo))) {
-          tiposRelacionados.add(tipo);
-        }
-      }
-
-      for (const evidencia of evidenciasPorFato) {
-        if (tiposRelacionados.has(evidencia.tipo) && Number.isInteger(evidencia.frame) && frames[evidencia.frame]) {
-          framesEncontrados.push(frames[evidencia.frame]);
-        }
-      }
-
-      setFramesDestacados(Array.from(new Set(framesEncontrados)));
-      setAvisoEvidencia(framesEncontrados.length === 0
-        ? `Sem evidência registrada para os critérios de ${protocolo.codigo}.`
-        : '');
-
-      window.setTimeout(() => {
-        document.querySelector('.evidence-row.highlighted')?.scrollIntoView({
-          block: 'center',
-        });
-      }, 0);
-      return;
-    }
-
-    for (const campo of campos) {
-      const indice = evidenciasPorFato?.[campo];
-      if (Number.isInteger(indice) && frames[indice]) {
-        framesEncontrados.push(frames[indice]);
-      } else {
-        semEvidencia.push(criterioLabels[campo] || campo);
-      }
-    }
+    const relacionadas = evidenciasDoProtocolo(evidencias, protocolo);
+    const framesEncontrados = relacionadas.map((evidencia) => evidencia.frame);
 
     setFramesDestacados(Array.from(new Set(framesEncontrados)));
-    setAvisoEvidencia(semEvidencia.length > 0
-      ? `Sem evidência registrada para: ${semEvidencia.join(', ')}.`
+    setAvisoEvidencia(framesEncontrados.length === 0
+      ? `Sem evidência registrada para os critérios de ${protocolo.codigo}.`
       : '');
+    setMostrarTodosFrames(true);
 
     window.setTimeout(() => {
-      document.querySelector('.evidence-row.highlighted')?.scrollIntoView({
+      document.querySelector('.inventory-row.highlighted')?.scrollIntoView({
         block: 'center',
       });
     }, 0);
   }
-
-  useEffect(() => {
-    function onKeyDown(event) {
-      const tagName = event.target?.tagName;
-      if (tagName === 'INPUT' || tagName === 'SELECT' || tagName === 'TEXTAREA') {
-        return;
-      }
-
-      if (event.key === 'ArrowLeft') {
-        event.preventDefault();
-        irParaFrame(-1);
-      }
-
-      if (event.key === 'ArrowRight') {
-        event.preventDefault();
-        irParaFrame(1);
-      }
-    }
-
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [irParaFrame]);
 
   if (carregando) {
     return (
@@ -1281,7 +1087,26 @@ function OcorrenciaDetalhePage({ id }) {
   }
 
   const { ocorrencia } = detalhe;
-  const fatos = listaFatos(ocorrencia.fatos);
+  const principal = protocoloPrincipal(ocorrencia.protocolos_casados);
+  const evidenciasPrincipal = evidenciasDoProtocolo(evidencias, principal);
+  const frameVeredito = evidenciasPrincipal[0]?.frame
+    || ocorrencia.frame_principal
+    || sequenciaFrames[0]
+    || '';
+  const demaisProtocolos = (Array.isArray(ocorrencia.protocolos_casados)
+    ? ocorrencia.protocolos_casados
+    : []).filter((protocolo) => protocolo !== principal);
+  const fatosAcionadores = [
+    ['pessoa_na_pista', 'Pessoa na pista'],
+    ['veiculo_parado', 'Veículo parado'],
+    ['veiculos_parados_na_pista', 'Veículos parados na pista'],
+    ['fogo', 'Fogo'],
+    ['fumaca', 'Fumaça'],
+    ['agua_na_pista', 'Água na pista'],
+    ['carga_derramada', 'Carga derramada'],
+    ['bloqueio_via', 'Bloqueio da via'],
+  ];
+  const veiculos = ocorrencia.fatos?.veiculos || {};
 
   return (
     <AppShell>
@@ -1295,33 +1120,27 @@ function OcorrenciaDetalhePage({ id }) {
         <p>{formatarData(ocorrencia.detectada_em || ocorrencia.created_at)}</p>
       </section>
 
-      <section className="evidence-layout">
-        <div className="detail-main">
-          {gruposEvidencia.map((grupo) => (
-            <section className="evidence-group" key={grupo.tipo}>
-              <h2>
-                {tipoEvidenciaLabels[grupo.tipo] || 'Evidências'} ({grupo.itens.length})
-                {grupo.tipo === 'veiculo' && ocorrencia.fatos ? (
-                  <span>
-                    {' '} - estacionados {ocorrencia.fatos.veiculos_estacionados ?? 0}, parados na pista {ocorrencia.fatos.veiculos_parados_na_pista ?? 0}, em movimento {ocorrencia.fatos.veiculos_em_movimento ?? 0}
-                  </span>
-                ) : null}
-              </h2>
-              {grupo.itens.map((evidencia, index) => (
-                <EvidenceCard
-                  key={evidencia.id || `${evidencia.frame}-${index}`}
-                  evidencia={evidencia}
-                  highlighted={framesDestacados.includes(evidencia.frame)}
-                  onOpenImage={setImagemAmpliada}
-                  onProtocolClick={destacarProtocolo}
-                />
-              ))}
-            </section>
-          ))}
-
-          {avisoEvidencia ? <p className="alert alert-warning">{avisoEvidencia}</p> : null}
-
-          <section className="card decision-section">
+      <section className="decision-flow">
+        <section className="card verdict-card">
+          <div className="verdict-media">
+            {frameVeredito ? (
+              <button type="button" onClick={() => setImagemAmpliada(frameVeredito)}>
+                <img src={`/api/midia/${frameVeredito}`} alt="Imagem principal de evidência" />
+              </button>
+            ) : (
+              <div className="empty-frame">Sem imagem de evidência</div>
+            )}
+          </div>
+          <div className="verdict-content">
+            <p className="eyebrow">Veredito</p>
+            {principal ? (
+              <>
+                <h2>{principal.codigo} - {principal.nome}</h2>
+                <p>Prioridade {principal.prioridade}</p>
+              </>
+            ) : (
+              <h2>Nenhum protocolo acionado</h2>
+            )}
             <DecisionPanel
               detalhe={detalhe}
               onDecidido={carregar}
@@ -1330,92 +1149,98 @@ function OcorrenciaDetalhePage({ id }) {
               orientacao={orientacao}
               setOrientacao={setOrientacao}
             />
-          </section>
+          </div>
+        </section>
 
+        {avisoEvidencia ? <p className="alert alert-warning">{avisoEvidencia}</p> : null}
+
+        <section className="card compact-section">
+          <p className="eyebrow">Demais protocolos casados</p>
+          <div className="protocol-list compact-list">
+            {demaisProtocolos.length > 0 ? demaisProtocolos.map((protocolo) => (
+              <button
+                type="button"
+                className="protocol-chip"
+                key={protocolo.protocolo_id || protocolo.codigo}
+                onClick={() => destacarProtocolo(protocolo)}
+              >
+                {protocolo.codigo} - {protocolo.nome}
+              </button>
+            )) : (
+              <span>Nenhum outro protocolo casado</span>
+            )}
+          </div>
+        </section>
+
+        <section className="card compact-section">
+          <p className="eyebrow">Fatos que acionam</p>
+          <div className="trigger-facts">
+            {fatosAcionadores.map(([campo, label]) => {
+              const valor = campo === 'bloqueio_via'
+                ? ocorrencia.fatos?.[campo] !== 'nenhum'
+                : Boolean(ocorrencia.fatos?.[campo]);
+              return (
+                <div className={valor ? 'trigger-fact positive' : 'trigger-fact'} key={campo}>
+                  <strong>{label}</strong>
+                  <span>{formatarValor(ocorrencia.fatos?.[campo])}</span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="card compact-section context-section">
+          <p className="eyebrow">Contexto</p>
+          <dl className="context-grid">
+            <div><dt>Carros</dt><dd>{veiculos.carro ?? 0}</dd></div>
+            <div><dt>Motos</dt><dd>{veiculos.moto ?? 0}</dd></div>
+            <div><dt>Ônibus</dt><dd>{veiculos.onibus ?? 0}</dd></div>
+            <div><dt>Caminhões</dt><dd>{veiculos.caminhao ?? 0}</dd></div>
+            <div><dt>Estacionados</dt><dd>{ocorrencia.fatos?.veiculos_estacionados ?? 0}</dd></div>
+            <div><dt>Em movimento</dt><dd>{ocorrencia.fatos?.veiculos_em_movimento ?? 0}</dd></div>
+          </dl>
+          <p className="muted">{ocorrencia.fatos?.observacao || 'Sem observação do modelo.'}</p>
+        </section>
+
+        <section className="card compact-section">
           <button
             type="button"
             className="link-button"
             onClick={() => setMostrarTodosFrames((atual) => !atual)}
           >
-            {mostrarTodosFrames ? 'ocultar todos os frames' : 'ver todos os frames'}
+            {mostrarTodosFrames ? 'ocultar inventário de elementos' : 'ver inventário de elementos'}
           </button>
 
-          {mostrarTodosFrames ? (
-            <article className="card frame-card">
-              {frameAtual ? (
-                <img src={`/api/midia/${frameAtual}`} alt="Frame selecionado da ocorrência" />
-              ) : (
-                <div className="empty-frame">Sem frame disponível</div>
-              )}
-              <div className="frame-navigation">
-                <button
-                  type="button"
-                  className="button button-secondary"
-                  disabled={totalFrames <= 1 || framePosicao === 0}
-                  onClick={() => irParaFrame(-1)}
-                >
-                  Anterior
-                </button>
-                <strong>
-                  {totalFrames > 0 ? `Frame ${framePosicao + 1} de ${totalFrames}` : 'Sem frames'}
-                </strong>
-                <button
-                  type="button"
-                  className="button button-secondary"
-                  disabled={totalFrames <= 1 || framePosicao >= totalFrames - 1}
-                  onClick={() => irParaFrame(1)}
-                >
-                  Próximo
-                </button>
-              </div>
-              {totalFrames > 0 ? (
-                <div className="frame-strip">
-                  {sequenciaFrames.map((frame, index) => (
-                    <button
-                      type="button"
-                      key={frame}
-                      className={frame === frameAtual ? 'frame-thumb active' : 'frame-thumb'}
-                      onClick={() => setFrameAtual(frame)}
-                      aria-label={`Selecionar frame ${index + 1} de ${totalFrames}`}
-                    >
-                      <img src={`/api/midia/${frame}`} alt={`Miniatura do frame ${index + 1}`} />
-                      <span>{index + 1}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </article>
-          ) : null}
-        </div>
-
-        <aside className="detail-side">
-          <section className="card">
-            <p className="eyebrow">Identificado pela análise</p>
-            <h2>Fatos observados</h2>
-            <dl className="facts-grid">
-              {fatos.map((fato) => (
-                <div key={fato.label}>
-                  <dt>{fato.label}</dt>
-                  <dd>{formatarValor(fato.value)}</dd>
-                </div>
+          {mostrarTodosFrames ? gruposEvidencia.map((grupo) => (
+            <section className="evidence-group" key={grupo.tipo}>
+              <h2>
+                {tipoEvidenciaLabels[grupo.tipo] || 'Evidências'} ({grupo.itens.length})
+              </h2>
+              {grupo.itens.map((evidencia, index) => (
+                <EvidenceCard
+                  key={evidencia.id || `${evidencia.frame}-${index}`}
+                  evidencia={evidencia}
+                  highlighted={framesDestacados.includes(evidencia.frame)}
+                  onOpenImage={setImagemAmpliada}
+                />
               ))}
-            </dl>
-          </section>
+            </section>
+          )) : null}
+        </section>
 
-          <section className="card">
-            <p className="eyebrow">Auditoria</p>
-            <h2>Eventos</h2>
-            <ol className="audit-list">
-              {detalhe.auditoria.map((evento) => (
-                <li key={evento.id}>
-                  <strong>{evento.evento}</strong>
-                  <span>{formatarData(evento.created_at)}</span>
-                  <small>Ator: {evento.ator}</small>
-                </li>
-              ))}
-            </ol>
-          </section>
-        </aside>
+        <section className="card compact-section">
+          <p className="eyebrow">Auditoria</p>
+          <h2>Eventos</h2>
+          <ol className="audit-list">
+            {detalhe.auditoria.map((evento) => (
+              <li key={evento.id}>
+                <strong>{evento.evento}</strong>
+                <span>{formatarData(evento.created_at)}</span>
+                <small>Ator: {evento.ator}</small>
+              </li>
+            ))}
+          </ol>
+        </section>
       </section>
       <ImageModal frame={imagemAmpliada} onClose={() => setImagemAmpliada('')} />
     </AppShell>
