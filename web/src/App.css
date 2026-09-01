@@ -464,6 +464,59 @@ dd {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
+.related-evidence-list {
+  display: grid;
+  gap: 10px;
+}
+
+.related-evidence-list h3 {
+  color: var(--text-strong);
+  margin: 0;
+}
+
+.related-evidence-item {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 112px minmax(0, 1fr);
+  padding: 10px;
+  text-align: left;
+}
+
+.related-evidence-item.selected {
+  border-color: var(--cor-blue);
+  box-shadow: inset 0 0 0 2px rgba(19, 58, 107, 0.2);
+}
+
+.related-evidence-item.candidate {
+  border-style: dashed;
+}
+
+.related-evidence-item img {
+  aspect-ratio: 16 / 9;
+  border-radius: 8px;
+  display: block;
+  object-fit: cover;
+  width: 100%;
+}
+
+.related-evidence-item span,
+.related-evidence-item small,
+.related-evidence-item em {
+  display: block;
+}
+
+.related-evidence-item small,
+.related-evidence-item em {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
 .verdict-thumb {
   background: #f6f9fc;
   border: 2px solid transparent;
@@ -988,6 +1041,7 @@ dd {
   .inventory-row,
   .verdict-card,
   .verdict-thumbs,
+  .related-evidence-item,
   .frame-navigation,
   .metric-numbers.two,
   .metrics-grid,

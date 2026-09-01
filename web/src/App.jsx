@@ -44,20 +44,23 @@ const tipoEvidenciaLabels = {
   outro: 'Outros',
 };
 
-const camposPorTipoEvidencia = {
-  veiculo: ['veiculo_parado', 'veiculos.carro', 'veiculos.moto', 'veiculos.caminhao', 'veiculos.onibus'],
-  pessoa: ['pessoa_na_pista', 'pessoa_ao_solo'],
-  fogo: ['fogo'],
-  fumaca: ['fumaca'],
-  agua: ['agua_na_pista'],
-  carga: ['carga_derramada'],
-};
-
 const estadoVeiculoLabels = {
   estacionado: 'estacionado',
   parado_na_pista: 'parado na pista',
   em_movimento: 'em movimento',
   indeterminado: 'indeterminado',
+};
+
+const subtipoLabels = {
+  carro: 'carro',
+  taxi: 'táxi',
+  van: 'van/furgão',
+  caminhao: 'caminhão',
+  onibus: 'ônibus',
+  motocicleta: 'motocicleta',
+  autopropelido: 'autopropelido',
+  bicicleta: 'bicicleta',
+  outro: 'outro',
 };
 
 function navegar(path) {
@@ -389,26 +392,103 @@ function protocoloId(protocolo) {
   return protocolo?.protocolo_id || protocolo?.id || null;
 }
 
-function tiposRelacionadosAoProtocolo(protocolo) {
-  const campos = camposDosCriterios(protocolo?.criterios);
-  const tipos = new Set();
-
-  for (const [tipo, camposTipo] of Object.entries(camposPorTipoEvidencia)) {
-    if (campos.some((campo) => camposTipo.includes(campo))) {
-      tipos.add(tipo);
-    }
+function evidenciaRelacionaComCampo(evidencia, campo) {
+  if (!evidencia) {
+    return { relacionada: false, candidata: false };
   }
 
-  return tipos;
+  const veiculoSemSubtipo = evidencia.tipo === 'veiculo' && evidencia.subtipo === null;
+
+  if (campo === 'veiculos.moto') {
+    return {
+      relacionada: evidencia.tipo === 'veiculo' && evidencia.subtipo === 'motocicleta',
+      candidata: veiculoSemSubtipo,
+    };
+  }
+
+  if (campo === 'veiculos.caminhao') {
+    return {
+      relacionada: evidencia.tipo === 'veiculo' && evidencia.subtipo === 'caminhao',
+      candidata: veiculoSemSubtipo,
+    };
+  }
+
+  if (campo === 'veiculos.onibus') {
+    return {
+      relacionada: evidencia.tipo === 'veiculo' && evidencia.subtipo === 'onibus',
+      candidata: veiculoSemSubtipo,
+    };
+  }
+
+  if (campo === 'veiculos.carro') {
+    return {
+      relacionada: evidencia.tipo === 'veiculo' && ['carro', 'taxi', 'van'].includes(evidencia.subtipo),
+      candidata: veiculoSemSubtipo,
+    };
+  }
+
+  if (campo === 'veiculos_estacionados') {
+    return { relacionada: evidencia.tipo === 'veiculo' && evidencia.estado === 'estacionado', candidata: false };
+  }
+
+  if (campo === 'veiculos_parados_na_pista' || campo === 'veiculo_parado') {
+    return { relacionada: evidencia.tipo === 'veiculo' && evidencia.estado === 'parado_na_pista', candidata: false };
+  }
+
+  if (campo === 'veiculos_em_movimento') {
+    return { relacionada: evidencia.tipo === 'veiculo' && evidencia.estado === 'em_movimento', candidata: false };
+  }
+
+  if (campo === 'pessoa_na_pista' || campo === 'pessoa_ao_solo') {
+    return { relacionada: evidencia.tipo === 'pessoa', candidata: false };
+  }
+
+  if (campo === 'fogo') {
+    return { relacionada: evidencia.tipo === 'fogo', candidata: false };
+  }
+
+  if (campo === 'fumaca') {
+    return { relacionada: evidencia.tipo === 'fumaca', candidata: false };
+  }
+
+  if (campo === 'agua_na_pista') {
+    return { relacionada: evidencia.tipo === 'agua', candidata: false };
+  }
+
+  if (campo === 'carga_derramada') {
+    return { relacionada: evidencia.tipo === 'carga', candidata: false };
+  }
+
+  return { relacionada: false, candidata: false };
 }
 
-function evidenciasDoProtocolo(evidencias, protocolo) {
-  const tipos = tiposRelacionadosAoProtocolo(protocolo);
-  if (tipos.size === 0) {
+function evidenciasDoProtocolo(evidencias, protocolo, options = {}) {
+  const campos = camposDosCriterios(protocolo?.criterios);
+  if (campos.length === 0) {
     return [];
   }
 
-  return evidencias.filter((evidencia) => tipos.has(evidencia.tipo));
+  const resultado = new Map();
+
+  for (const evidencia of evidencias) {
+    let relacionada = false;
+    let candidata = false;
+
+    for (const campo of campos) {
+      const match = evidenciaRelacionaComCampo(evidencia, campo);
+      relacionada = relacionada || match.relacionada;
+      candidata = candidata || match.candidata;
+    }
+
+    if (relacionada || (options.incluirCandidatas && candidata)) {
+      resultado.set(evidencia.id, {
+        ...evidencia,
+        candidata: !relacionada && candidata,
+      });
+    }
+  }
+
+  return Array.from(resultado.values());
 }
 
 function BrandHeader({ compact = false }) {
@@ -1075,12 +1155,15 @@ function OcorrenciaDetalhePage({ id }) {
       return;
     }
 
-    const relacionadas = evidenciasDoProtocolo(evidencias, protocolo);
+    const relacionadas = evidenciasDoProtocolo(evidencias, protocolo, { incluirCandidatas: true });
+    const exatas = relacionadas.filter((evidencia) => !evidencia.candidata);
     const framesEncontrados = relacionadas.map((evidencia) => evidencia.frame);
 
     setFramesDestacados(Array.from(new Set(framesEncontrados)));
     setAvisoEvidencia(framesEncontrados.length === 0
       ? `Sem evidência registrada para os critérios de ${protocolo.codigo}.`
+      : exatas.length === 0
+        ? `Sem evidência específica para os critérios de ${protocolo.codigo}; exibindo veículos com subtipo não identificado como candidatos.`
       : '');
     setMostrarTodosFrames(true);
 
@@ -1129,6 +1212,7 @@ function OcorrenciaDetalhePage({ id }) {
   const protocolosCasados = Array.isArray(ocorrencia.protocolos_casados) ? ocorrencia.protocolos_casados : [];
   const protocoloSelecionado = protocolosCasados.find((protocolo) => protocoloId(protocolo) === protocoloSelecionadoId) || principal;
   const evidenciasSelecionadas = evidenciasDoProtocolo(evidencias, protocoloSelecionado);
+  const evidenciasRelacionadas = evidenciasDoProtocolo(evidencias, protocoloSelecionado, { incluirCandidatas: true });
   const frameSugerido = evidenciasSelecionadas[0]?.frame
     || ocorrencia.frame_principal
     || sequenciaFrames[0]
@@ -1186,6 +1270,34 @@ function OcorrenciaDetalhePage({ id }) {
             ) : (
               <h2>Nenhum protocolo acionado</h2>
             )}
+            <div className="related-evidence-list">
+              <h3>Evidências relacionadas ao protocolo</h3>
+              {evidenciasRelacionadas.length > 0 ? evidenciasRelacionadas.map((evidencia) => (
+                <button
+                  type="button"
+                  key={evidencia.id}
+                  className={[
+                    'related-evidence-item',
+                    evidencia.frame === frameEscolhido ? 'selected' : '',
+                    evidencia.candidata ? 'candidate' : '',
+                  ].filter(Boolean).join(' ')}
+                  onClick={() => setFrameEscolhido(evidencia.frame)}
+                >
+                  <img src={`/api/midia/${evidencia.frame}`} alt="Evidência relacionada ao protocolo" />
+                  <span>
+                    <strong>{evidencia.descricao}</strong>
+                    <small>
+                      {evidencia.subtipo ? `Subtipo: ${subtipoLabels[evidencia.subtipo] || evidencia.subtipo}` : 'Subtipo não identificado'}
+                      {evidencia.estado ? ` | Estado: ${estadoVeiculoLabels[evidencia.estado] || evidencia.estado}` : ''}
+                    </small>
+                    {evidencia.candidata ? <em>Candidata por subtipo não identificado</em> : null}
+                  </span>
+                </button>
+              )) : (
+                <p className="alert alert-warning">Nenhuma evidência vinculada aos critérios deste protocolo.</p>
+              )}
+            </div>
+            <p className="muted">Outros frames da ocorrência</p>
             {sequenciaFrames.length > 0 ? (
               <div className="verdict-thumbs">
                 {sequenciaFrames.map((frame, index) => (
