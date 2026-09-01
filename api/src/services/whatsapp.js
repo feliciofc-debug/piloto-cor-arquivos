@@ -415,7 +415,7 @@ async function notificarOcorrenciaDecidida(ocorrenciaId, log = console) {
        o.frame_principal,
        o.frame_escolhido,
        o.frames,
-       c.tunel,
+       c.tunel
      from ocorrencias o
      left join cameras c on c.id = o.camera_id
      where o.id = $1
