@@ -60,10 +60,13 @@ async function analisarOcorrencia(ocorrenciaId, log = console) {
       await client.query('begin');
 
       const casamento = await casarProtocolos(resultado.fatos, client);
+      const statusFinal = casamento.protocolos.length > 0
+        ? 'aguardando_operador'
+        : 'sem_ocorrencia';
 
       const updateResult = await client.query(
         `update ocorrencias
-         set status = 'aguardando_operador',
+         set status = $5,
              fatos = $2::jsonb,
              confianca = $3,
              protocolos_casados = $4::jsonb
@@ -74,6 +77,7 @@ async function analisarOcorrencia(ocorrenciaId, log = console) {
           JSON.stringify(resultado.fatos),
           resultado.fatos.confianca,
           JSON.stringify(casamento.protocolos),
+          statusFinal,
         ],
       );
 

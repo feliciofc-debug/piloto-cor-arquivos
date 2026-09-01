@@ -343,6 +343,7 @@ function montarEvidencias(ocorrencia) {
       .filter((item) => Number.isInteger(item?.frame) && frames[item.frame])
       .map((item, index) => ({
         id: `${item.tipo}-${item.frame}-${index}`,
+        indiceFrame: item.frame,
         frame: frames[item.frame],
         tipo: item.tipo,
         descricao: item.descricao,
@@ -392,99 +393,23 @@ function protocoloId(protocolo) {
   return protocolo?.protocolo_id || protocolo?.id || null;
 }
 
-function evidenciaRelacionaComCampo(evidencia, campo) {
-  if (!evidencia) {
-    return { relacionada: false, candidata: false };
-  }
-
-  const veiculoSemSubtipo = evidencia.tipo === 'veiculo' && evidencia.subtipo === null;
-
-  if (campo === 'veiculos.moto') {
-    return {
-      relacionada: evidencia.tipo === 'veiculo' && evidencia.subtipo === 'motocicleta',
-      candidata: veiculoSemSubtipo,
-    };
-  }
-
-  if (campo === 'veiculos.caminhao') {
-    return {
-      relacionada: evidencia.tipo === 'veiculo' && evidencia.subtipo === 'caminhao',
-      candidata: veiculoSemSubtipo,
-    };
-  }
-
-  if (campo === 'veiculos.onibus') {
-    return {
-      relacionada: evidencia.tipo === 'veiculo' && evidencia.subtipo === 'onibus',
-      candidata: veiculoSemSubtipo,
-    };
-  }
-
-  if (campo === 'veiculos.carro') {
-    return {
-      relacionada: evidencia.tipo === 'veiculo' && ['carro', 'taxi', 'van'].includes(evidencia.subtipo),
-      candidata: veiculoSemSubtipo,
-    };
-  }
-
-  if (campo === 'veiculos_estacionados') {
-    return { relacionada: evidencia.tipo === 'veiculo' && evidencia.estado === 'estacionado', candidata: false };
-  }
-
-  if (campo === 'veiculos_parados_na_pista' || campo === 'veiculo_parado') {
-    return { relacionada: evidencia.tipo === 'veiculo' && evidencia.estado === 'parado_na_pista', candidata: false };
-  }
-
-  if (campo === 'veiculos_em_movimento') {
-    return { relacionada: evidencia.tipo === 'veiculo' && evidencia.estado === 'em_movimento', candidata: false };
-  }
-
-  if (campo === 'pessoa_na_pista' || campo === 'pessoa_ao_solo') {
-    return { relacionada: evidencia.tipo === 'pessoa', candidata: false };
-  }
-
-  if (campo === 'fogo') {
-    return { relacionada: evidencia.tipo === 'fogo', candidata: false };
-  }
-
-  if (campo === 'fumaca') {
-    return { relacionada: evidencia.tipo === 'fumaca', candidata: false };
-  }
-
-  if (campo === 'agua_na_pista') {
-    return { relacionada: evidencia.tipo === 'agua', candidata: false };
-  }
-
-  if (campo === 'carga_derramada') {
-    return { relacionada: evidencia.tipo === 'carga', candidata: false };
-  }
-
-  return { relacionada: false, candidata: false };
-}
-
-function evidenciasDoProtocolo(evidencias, protocolo, options = {}) {
-  const campos = camposDosCriterios(protocolo?.criterios);
-  if (campos.length === 0) {
+function evidenciasDoProtocolo(evidencias, protocolo) {
+  const evidenciasPersistidas = Array.isArray(protocolo?.evidencias) ? protocolo.evidencias : [];
+  if (evidenciasPersistidas.length === 0) {
     return [];
   }
 
   const resultado = new Map();
 
-  for (const evidencia of evidencias) {
-    let relacionada = false;
-    let candidata = false;
+  for (const evidenciaPersistida of evidenciasPersistidas) {
+    const evidencia = evidencias.find((item) => (
+      item.indiceFrame === evidenciaPersistida.frame
+      && item.tipo === evidenciaPersistida.tipo
+      && item.descricao === evidenciaPersistida.descricao
+    ));
 
-    for (const campo of campos) {
-      const match = evidenciaRelacionaComCampo(evidencia, campo);
-      relacionada = relacionada || match.relacionada;
-      candidata = candidata || match.candidata;
-    }
-
-    if (relacionada || (options.incluirCandidatas && candidata)) {
-      resultado.set(evidencia.id, {
-        ...evidencia,
-        candidata: !relacionada && candidata,
-      });
+    if (evidencia) {
+      resultado.set(evidencia.id, evidencia);
     }
   }
 
@@ -1155,15 +1080,12 @@ function OcorrenciaDetalhePage({ id }) {
       return;
     }
 
-    const relacionadas = evidenciasDoProtocolo(evidencias, protocolo, { incluirCandidatas: true });
-    const exatas = relacionadas.filter((evidencia) => !evidencia.candidata);
+    const relacionadas = evidenciasDoProtocolo(evidencias, protocolo);
     const framesEncontrados = relacionadas.map((evidencia) => evidencia.frame);
 
     setFramesDestacados(Array.from(new Set(framesEncontrados)));
     setAvisoEvidencia(framesEncontrados.length === 0
       ? `Sem evidência registrada para os critérios de ${protocolo.codigo}.`
-      : exatas.length === 0
-        ? `Sem evidência específica para os critérios de ${protocolo.codigo}; exibindo veículos com subtipo não identificado como candidatos.`
       : '');
     setMostrarTodosFrames(true);
 
@@ -1279,7 +1201,6 @@ function OcorrenciaDetalhePage({ id }) {
                   className={[
                     'related-evidence-item',
                     evidencia.frame === frameEscolhido ? 'selected' : '',
-                    evidencia.candidata ? 'candidate' : '',
                   ].filter(Boolean).join(' ')}
                   onClick={() => setFrameEscolhido(evidencia.frame)}
                 >
@@ -1290,7 +1211,6 @@ function OcorrenciaDetalhePage({ id }) {
                       {evidencia.subtipo ? `Subtipo: ${subtipoLabels[evidencia.subtipo] || evidencia.subtipo}` : 'Subtipo não identificado'}
                       {evidencia.estado ? ` | Estado: ${estadoVeiculoLabels[evidencia.estado] || evidencia.estado}` : ''}
                     </small>
-                    {evidencia.candidata ? <em>Candidata por subtipo não identificado</em> : null}
                   </span>
                 </button>
               )) : (

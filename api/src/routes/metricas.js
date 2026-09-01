@@ -63,6 +63,7 @@ async function metricasRoutes(fastify) {
              and coalesce(detectada_em, created_at) < $2
              and decidida_em is not null
              and detectada_em is not null
+             and status <> 'sem_ocorrencia'
          )
          select
            avg(segundos) as media_segundos,
@@ -79,7 +80,8 @@ async function metricasRoutes(fastify) {
            count(*) filter (where status = 'descartada')::integer as descartadas
          from ocorrencias
          where coalesce(detectada_em, created_at) >= $1
-           and coalesce(detectada_em, created_at) < $2`,
+           and coalesce(detectada_em, created_at) < $2
+           and status <> 'sem_ocorrencia'`,
         params,
       ),
       pool.query(
@@ -91,7 +93,8 @@ async function metricasRoutes(fastify) {
            count(*) filter (where decisao in ('aprovada', 'ajustada'))::integer as total_avaliadas_motor
          from ocorrencias
          where coalesce(detectada_em, created_at) >= $1
-           and coalesce(detectada_em, created_at) < $2`,
+           and coalesce(detectada_em, created_at) < $2
+           and status <> 'sem_ocorrencia'`,
         params,
       ),
       pool.query(
@@ -103,6 +106,7 @@ async function metricasRoutes(fastify) {
          cross join lateral jsonb_array_elements(o.protocolos_casados) as protocolo(item)
          where coalesce(o.detectada_em, o.created_at) >= $1
            and coalesce(o.detectada_em, o.created_at) < $2
+           and o.status <> 'sem_ocorrencia'
          group by codigo, nome
          order by quantidade desc, codigo asc
          limit 20`,
@@ -141,6 +145,7 @@ async function metricasRoutes(fastify) {
          left join protocolos escolhido on escolhido.id = o.protocolo_escolhido_id
          where coalesce(o.detectada_em, o.created_at) >= $1
            and coalesce(o.detectada_em, o.created_at) < $2
+           and o.status <> 'sem_ocorrencia'
            and o.decisao = 'ajustada'
          group by
            sugerido.codigo,

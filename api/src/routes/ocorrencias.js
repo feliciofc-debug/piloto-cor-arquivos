@@ -17,6 +17,7 @@ const statusPermitidos = new Set([
   'aprovada',
   'descartada',
   'expirada',
+  'sem_ocorrencia',
 ]);
 const decisoesPermitidas = new Set(['aprovada', 'descartada']);
 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -211,6 +212,7 @@ async function ocorrenciasRoutes(fastify) {
          left join cameras c on c.id = o.camera_id
          where ($1::text is null or o.status = $1)
            and ($2::text is null or c.tunel = $2)
+           and o.status <> 'sem_ocorrencia'
        )
        select
          id,
